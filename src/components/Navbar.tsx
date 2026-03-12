@@ -1,19 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React from 'react';
+import { motion } from 'framer-motion';
+import Link from 'next/link';
+import { Stethoscope } from 'lucide-react';
 
 const Navbar = () => {
-    const [buttonState, setButtonState] = useState('idle'); // 'idle' | 'clicked'
-
-    const handleGetApp = () => {
-        if (buttonState === 'idle') {
-            setButtonState('clicked');
-            // Reset button state after 2.5 seconds
-            setTimeout(() => setButtonState('idle'), 2500);
-        }
-    };
-
     const navLinks = [
         { name: 'Crisis', href: '#crisis' },
         { name: 'Features', href: '#features' },
@@ -48,37 +40,15 @@ const Navbar = () => {
                     ))}
                 </div>
 
-                {/* The "Smart" Button */}
+                {/* For Specialists Button */}
                 <div>
-                    <button
-                        onClick={handleGetApp}
-                        className="relative overflow-hidden bg-slate-900 text-white font-semibold py-2.5 px-6 rounded-full hover:bg-slate-800 hover:scale-[1.02] active:scale-95 transition-all duration-300 shadow-lg shadow-slate-900/20 w-32 h-10 flex items-center justify-center"
+                    <Link
+                        href="/portal/login"
+                        className="relative overflow-hidden bg-slate-900 text-white font-semibold py-2.5 px-6 rounded-full hover:bg-slate-800 hover:scale-[1.02] active:scale-95 transition-all duration-300 shadow-lg shadow-slate-900/20 h-10 flex items-center justify-center gap-2 text-sm"
                     >
-                        <AnimatePresence mode="wait" initial={false}>
-                            {buttonState === 'idle' ? (
-                                <motion.span
-                                    key="idle"
-                                    initial={{ y: 20, opacity: 0 }}
-                                    animate={{ y: 0, opacity: 1 }}
-                                    exit={{ y: -20, opacity: 0 }}
-                                    transition={{ duration: 0.2 }}
-                                >
-                                    Get App
-                                </motion.span>
-                            ) : (
-                                <motion.span
-                                    key="clicked"
-                                    initial={{ y: 20, opacity: 0 }}
-                                    animate={{ y: 0, opacity: 1 }}
-                                    exit={{ y: -20, opacity: 0 }}
-                                    transition={{ duration: 0.2 }}
-                                    className="text-xs font-bold text-blue-200"
-                                >
-                                    Coming Soon
-                                </motion.span>
-                            )}
-                        </AnimatePresence>
-                    </button>
+                        <Stethoscope className="w-4 h-4" />
+                        <span>For Specialists</span>
+                    </Link>
                 </div>
             </motion.div>
         </nav>
