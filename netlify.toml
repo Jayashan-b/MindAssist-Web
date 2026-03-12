@@ -1,0 +1,17 @@
+[build]
+  command   = "npm run build"
+  publish   = "out"
+
+[[redirects]]
+  # Redirect bare portal routes to their trailing-slash counterparts
+  # so that Next.js static pages (trailingSlash: true) are served correctly
+  from   = "/portal/:slug"
+  to     = "/portal/:slug/"
+  status = 301
+  force  = false
+
+[[redirects]]
+  # Fallback: any unmatched path → 404 page
+  from   = "/*"
+  to     = "/404.html"
+  status = 404
