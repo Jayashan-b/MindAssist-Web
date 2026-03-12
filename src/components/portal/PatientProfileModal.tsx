@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Calendar, Star, FileText, FolderOpen, Clock, Video, Phone, Plus, Pencil, Trash2, Loader2 } from 'lucide-react';
+import { X, Calendar, Star, FileText, FolderOpen, Clock, Video, Phone, Plus, Pencil, Trash2, Loader2, ShieldQuestion } from 'lucide-react';
 import { format } from 'date-fns';
 import type { PatientProfile, PatientNote, Appointment } from '@/lib/types';
 import { APPOINTMENT_STATUS_LABELS, APPOINTMENT_STATUS_COLORS } from '@/lib/types';
@@ -81,8 +81,9 @@ export default function PatientProfileModal({
               <h2 className="text-xl font-bold text-slate-900">{patient.displayName}</h2>
               {patient.email && <p className="text-sm text-slate-500">{patient.email}</p>}
               {patient.isAnonymous && (
-                <span className="inline-block mt-1 px-2 py-0.5 bg-slate-100 text-slate-500 text-xs rounded-md font-medium">
-                  Anonymous Patient
+                <span className="inline-flex items-center gap-1.5 mt-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold rounded-lg">
+                  <ShieldQuestion className="w-3.5 h-3.5" />
+                  Anonymous Session — identity protected
                 </span>
               )}
             </div>

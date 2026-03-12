@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Search, Users, Calendar, Star } from 'lucide-react';
+import { Search, Users, Calendar, Star, ShieldQuestion } from 'lucide-react';
 import { format } from 'date-fns';
 import AuthGuard from '@/components/portal/AuthGuard';
 import PortalSidebar from '@/components/portal/PortalSidebar';
@@ -138,12 +138,19 @@ function PatientsContent() {
                 >
                   <div className="flex items-center gap-3 mb-3">
                     <PatientAvatar name={patient.displayName} isAnonymous={patient.isAnonymous} size="md" />
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="font-semibold text-sm text-slate-800 truncate group-hover:text-violet-700 transition-colors">
                         {patient.displayName}
                       </p>
-                      {patient.email && (
-                        <p className="text-xs text-slate-400 truncate">{patient.email}</p>
+                      {patient.isAnonymous ? (
+                        <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 bg-amber-50 text-amber-600 border border-amber-100 text-[10px] font-medium rounded-md">
+                          <ShieldQuestion className="w-2.5 h-2.5" />
+                          Anonymous Session
+                        </span>
+                      ) : (
+                        patient.email && (
+                          <p className="text-xs text-slate-400 truncate">{patient.email}</p>
+                        )
                       )}
                     </div>
                   </div>

@@ -1,7 +1,9 @@
 /**
- * Deterministic two-word anonymous name generator.
- * Same seed always produces the same name — consistent across sessions.
- * Hacker/gamer aesthetic: adjective + creature/concept.
+ * Deterministic anonymous name generator.
+ * Format: "Adjective Noun #NNNN" — e.g. "Cyber Raven #4821"
+ *
+ * Combinations: 30 adjectives × 30 nouns × 10,000 numbers = 9,000,000 unique IDs.
+ * The same seed (appointmentId) always produces the same name.
  */
 
 const ADJECTIVES = [
@@ -31,13 +33,15 @@ function hashStr(s: string): number {
 }
 
 /**
- * Generate a cool two-word name deterministically from a seed (e.g. appointmentId).
- * Example outputs: "Silent Fox", "Cyber Raven", "Neon Wraith"
+ * Returns a deterministic "Adjective Noun #NNNN" name from a seed string.
+ * Example: generateAnonName("abc123") → "Cyber Raven #4821"
  */
 export function generateAnonName(seed: string): string {
   const h1 = hashStr(seed);
   const h2 = hashStr(seed + '\x01');
+  const h3 = hashStr(seed + '\x02');
   const adj = ADJECTIVES[h1 % ADJECTIVES.length];
   const noun = NOUNS[h2 % NOUNS.length];
-  return `${adj} ${noun}`;
+  const num = String(h3 % 10000).padStart(4, '0');
+  return `${adj}-${noun} #${num}`;
 }
