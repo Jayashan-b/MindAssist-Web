@@ -29,6 +29,8 @@ export interface Specialist {
   availableSlots: Record<string, string[]> | null;
   reviews: Review[];
   isOnCall: boolean;
+  onCallPriceInCents: number;
+  onCallPriceFormatted: string;
 }
 
 export type AppointmentStatus =

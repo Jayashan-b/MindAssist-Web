@@ -52,6 +52,7 @@ export default function RegisterPage() {
   const [consultationFee, setConsultationFee] = useState<number>(3000);
   const [selectedConsultationTypes, setSelectedConsultationTypes] = useState<string[]>(['video', 'audio']);
   const [isOnCall, setIsOnCall] = useState(false);
+  const [onCallFee, setOnCallFee] = useState<number>(5000);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -134,6 +135,8 @@ export default function RegisterPage() {
       availableSlots: null,
       reviews: [],
       isOnCall,
+      onCallPriceInCents: isOnCall ? onCallFee * 100 : priceInCents,
+      onCallPriceFormatted: isOnCall ? `LKR ${onCallFee.toLocaleString()}` : `LKR ${consultationFee.toLocaleString()}`,
     };
 
     try {
@@ -446,6 +449,24 @@ export default function RegisterPage() {
                       />
                     </button>
                   </div>
+
+                  {/* On-Call Fee (shown only when on-call is enabled) */}
+                  {isOnCall && (
+                    <div className="p-4 bg-amber-50/50 border border-amber-200/60 rounded-xl">
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        On-Call / Emergency Fee (LKR)
+                      </label>
+                      <p className="text-xs text-slate-500 mb-2">Premium rate for urgent consultations</p>
+                      <input
+                        type="number"
+                        min={500}
+                        step={500}
+                        value={onCallFee}
+                        onChange={(e) => setOnCallFee(parseInt(e.target.value) || 0)}
+                        className="w-48 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 text-sm focus:ring-2 focus:ring-amber-500/30 focus:border-amber-400 outline-none transition-all"
+                      />
+                    </div>
+                  )}
 
                   {/* Summary Preview */}
                   <div className="mt-6 p-4 bg-gradient-to-br from-violet-50 to-indigo-50 rounded-2xl border border-violet-100">

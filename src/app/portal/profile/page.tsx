@@ -33,6 +33,7 @@ function ProfileContent() {
   const [consultationFee, setConsultationFee] = useState(0);
   const [qualifications, setQualifications] = useState<string[]>([]);
   const [isOnCall, setIsOnCall] = useState(false);
+  const [onCallFee, setOnCallFee] = useState(0);
 
   useEffect(() => {
     if (specialist) {
@@ -45,6 +46,7 @@ function ProfileContent() {
       setConsultationFee(specialist.priceInCents / 100);
       setQualifications(specialist.qualifications);
       setIsOnCall(specialist.isOnCall);
+      setOnCallFee(specialist.onCallPriceInCents / 100);
     }
   }, [specialist]);
 
@@ -72,6 +74,8 @@ function ProfileContent() {
         priceFormatted: `LKR ${consultationFee.toLocaleString()}`,
         qualifications,
         isOnCall,
+        onCallPriceInCents: isOnCall ? onCallFee * 100 : consultationFee * 100,
+        onCallPriceFormatted: isOnCall ? `LKR ${onCallFee.toLocaleString()}` : `LKR ${consultationFee.toLocaleString()}`,
       });
       await refreshSpecialist();
       setSaved(true);
@@ -194,6 +198,24 @@ function ProfileContent() {
                 />
               </button>
             </div>
+
+            {/* On-Call Fee (conditional) */}
+            {isOnCall && (
+              <div className="pb-4 border-b border-slate-100">
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  On-Call / Emergency Fee (LKR)
+                </label>
+                <p className="text-xs text-slate-400 mb-2">Premium rate for urgent consultations</p>
+                <input
+                  type="number"
+                  min={500}
+                  step={500}
+                  value={onCallFee}
+                  onChange={(e) => setOnCallFee(parseInt(e.target.value) || 0)}
+                  className="w-48 px-4 py-3 bg-slate-50/80 border border-slate-200 rounded-xl text-slate-900 text-sm focus:ring-2 focus:ring-amber-500/30 focus:border-amber-400 outline-none transition-all"
+                />
+              </div>
+            )}
 
             {/* Bio */}
             <div>
