@@ -7,6 +7,7 @@ import {
   watchPatientDocuments,
   addPatientDocument,
   deletePatientDocument,
+  toggleDocumentSharing,
 } from '../firestore';
 import type { PatientDocument } from '../types';
 
@@ -74,5 +75,13 @@ export function usePatientDocuments(specialistId: string | undefined, patientUse
     [specialistId],
   );
 
-  return { documents, loading, uploading, uploadDocument, removeDocument };
+  const toggleSharing = useCallback(
+    async (docId: string, shared: boolean) => {
+      if (!specialistId) return;
+      await toggleDocumentSharing(specialistId, docId, shared);
+    },
+    [specialistId],
+  );
+
+  return { documents, loading, uploading, uploadDocument, removeDocument, toggleSharing };
 }

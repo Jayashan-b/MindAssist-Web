@@ -185,6 +185,7 @@ export interface PatientNote {
   updatedAt: string;
   appointmentId: string | null;
   tags: string[];
+  sharedWithPatient?: boolean;
 }
 
 export interface PatientDocument {
@@ -197,6 +198,20 @@ export interface PatientDocument {
   uploadedAt: string;
   description: string | null;
   appointmentId: string | null;
+  sharedWithPatient?: boolean;
+}
+
+export interface PatientUpload {
+  id: string;
+  userId: string;
+  specialistId: string;
+  appointmentId: string;
+  fileName: string;
+  fileUrl: string;
+  fileType: string | null;
+  fileSizeBytes: number;
+  uploadedAt: string;
+  description: string | null;
 }
 
 export interface PatientProfile {

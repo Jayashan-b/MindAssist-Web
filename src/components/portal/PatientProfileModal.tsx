@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Calendar, Star, FileText, FolderOpen, Clock, Video, Phone, Plus, Pencil, Trash2, Loader2, ShieldQuestion } from 'lucide-react';
+import { X, Calendar, Star, FileText, FolderOpen, Clock, Video, Phone, Plus, Pencil, Trash2, Loader2, ShieldQuestion, Share2, Download } from 'lucide-react';
 import { format } from 'date-fns';
 import type { PatientProfile, PatientNote, Appointment } from '@/lib/types';
 import { APPOINTMENT_STATUS_LABELS, APPOINTMENT_STATUS_COLORS } from '@/lib/types';
 import { usePatientNotes } from '@/lib/hooks/usePatientNotes';
 import { usePatientDocuments } from '@/lib/hooks/usePatientDocuments';
+import { usePatientUploads } from '@/lib/hooks/usePatientUploads';
 import PatientAvatar from './PatientAvatar';
 import PatientNoteEditor from './PatientNoteEditor';
 import PatientDocumentUploader from './PatientDocumentUploader';
@@ -31,8 +32,9 @@ export default function PatientProfileModal({
   const [editingNote, setEditingNote] = useState<PatientNote | null>(null);
   const [deletingNote, setDeletingNote] = useState<string | null>(null);
 
-  const { notes, loading: notesLoading, addNote, editNote, removeNote } = usePatientNotes(specialistId, patient.userId);
-  const { documents, loading: docsLoading, uploading, uploadDocument, removeDocument } = usePatientDocuments(specialistId, patient.userId);
+  const { notes, loading: notesLoading, addNote, editNote, removeNote, toggleSharing: toggleNoteSharing } = usePatientNotes(specialistId, patient.userId);
+  const { documents, loading: docsLoading, uploading, uploadDocument, removeDocument, toggleSharing: toggleDocSharing } = usePatientDocuments(specialistId, patient.userId);
+  const { uploads } = usePatientUploads(specialistId, patient.userId);
 
   if (!open) return null;
 
@@ -288,6 +290,17 @@ export default function PatientProfileModal({
                           {format(new Date(note.createdAt), 'MMM d, yyyy hh:mm a')}
                         </span>
                         <button
+                          onClick={() => toggleNoteSharing(note.id, !note.sharedWithPatient)}
+                          title={note.sharedWithPatient ? 'Shared with patient — click to unshare' : 'Share with patient'}
+                          className={`p-1 rounded transition-all ${
+                            note.sharedWithPatient
+                              ? 'text-emerald-600'
+                              : 'text-slate-400 hover:text-emerald-600 opacity-0 group-hover:opacity-100'
+                          }`}
+                        >
+                          <Share2 className="w-3 h-3" />
+                        </button>
+                        <button
                           onClick={() => { setEditingNote(note); setShowNoteEditor(false); }}
                           className="p-1 text-slate-400 hover:text-violet-600 rounded opacity-0 group-hover:opacity-100 transition-all"
                         >
@@ -328,7 +341,48 @@ export default function PatientProfileModal({
                   uploading={uploading}
                   onUpload={uploadDocument}
                   onRemove={removeDocument}
+                  onToggleShare={(doc, shared) => toggleDocSharing(doc.id, shared)}
                 />
+              )}
+
+              {/* Patient uploads (read-only) */}
+              {uploads.length > 0 && (
+                <div className="mt-6">
+                  <h3 className="text-sm font-semibold text-slate-700 mb-3">
+                    Uploaded by Patient
+                    <span className="ml-2 px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[10px] font-bold">{uploads.length}</span>
+                  </h3>
+                  <div className="space-y-2">
+                    {uploads.map((upload) => (
+                      <div key={upload.id} className="flex items-center gap-3 p-3 bg-blue-50 rounded-xl border border-blue-100">
+                        <div className="w-9 h-9 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                          <FileText className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-800 truncate">{upload.fileName}</p>
+                          <p className="text-xs text-slate-400">
+                            {upload.fileSizeBytes < 1024
+                              ? `${upload.fileSizeBytes} B`
+                              : upload.fileSizeBytes < 1048576
+                              ? `${(upload.fileSizeBytes / 1024).toFixed(1)} KB`
+                              : `${(upload.fileSizeBytes / 1048576).toFixed(1)} MB`}
+                            {' — '}
+                            {format(new Date(upload.uploadedAt), 'MMM d, yyyy')}
+                          </p>
+                        </div>
+                        <a
+                          href={upload.fileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-100 rounded-md transition-all"
+                          title="Download"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           )}

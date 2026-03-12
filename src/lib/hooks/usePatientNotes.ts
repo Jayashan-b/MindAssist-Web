@@ -6,6 +6,7 @@ import {
   addPatientNote,
   updatePatientNote,
   deletePatientNote,
+  toggleNoteSharing,
 } from '../firestore';
 import type { PatientNote } from '../types';
 
@@ -65,5 +66,13 @@ export function usePatientNotes(specialistId: string | undefined, patientUserId:
     [specialistId],
   );
 
-  return { notes, loading, addNote, editNote, removeNote };
+  const toggleSharing = useCallback(
+    async (noteId: string, shared: boolean) => {
+      if (!specialistId) return;
+      await toggleNoteSharing(specialistId, noteId, shared);
+    },
+    [specialistId],
+  );
+
+  return { notes, loading, addNote, editNote, removeNote, toggleSharing };
 }
