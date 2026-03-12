@@ -113,6 +113,9 @@ function appointmentFromDoc(data: DocumentData, id: string): Appointment {
     ratingComment: data.ratingComment ?? null,
     durationMinutes: data.durationMinutes ?? 30,
     meetingUrl: data.meetingUrl ?? null,
+    doctorJoinedAt: data.doctorJoinedAt ?? null,
+    doctorLeftAt: data.doctorLeftAt ?? null,
+    sessionStartedAt: data.sessionStartedAt ?? null,
   };
 }
 
@@ -139,6 +142,32 @@ export async function updateAppointmentStatus(
   await updateDoc(
     doc(db, 'users', userId, 'appointments', appointmentId),
     { status },
+  );
+}
+
+export async function markDoctorJoined(
+  userId: string,
+  appointmentId: string,
+): Promise<void> {
+  await updateDoc(
+    doc(db, 'users', userId, 'appointments', appointmentId),
+    {
+      doctorJoinedAt: new Date().toISOString(),
+      status: 'inProgress',
+    },
+  );
+}
+
+export async function markDoctorLeft(
+  userId: string,
+  appointmentId: string,
+): Promise<void> {
+  await updateDoc(
+    doc(db, 'users', userId, 'appointments', appointmentId),
+    {
+      doctorLeftAt: new Date().toISOString(),
+      status: 'completed',
+    },
   );
 }
 

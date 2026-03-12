@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Video, Phone, Calendar, Clock, ExternalLink, AlertCircle } from 'lucide-react';
+import { Video, Phone, Calendar, Clock, ExternalLink, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { format, differenceInMinutes } from 'date-fns';
 import Link from 'next/link';
 import type { Appointment } from '@/lib/types';
 import { APPOINTMENT_STATUS_LABELS, APPOINTMENT_STATUS_COLORS } from '@/lib/types';
+import { markDoctorJoined } from '@/lib/firestore';
 
 interface AppointmentCardProps {
   appointment: Appointment;
@@ -14,6 +15,7 @@ interface AppointmentCardProps {
 
 export default function AppointmentCard({ appointment, showJoinLink = true }: AppointmentCardProps) {
   const [now, setNow] = useState(new Date());
+  const [starting, setStarting] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 30000);
@@ -31,11 +33,18 @@ export default function AppointmentCard({ appointment, showJoinLink = true }: Ap
   const minutesAfter = differenceInMinutes(now, scheduledDate);
   const duration = appointment.durationMinutes || 30;
   const isWithinJoinWindow = minutesBefore <= 15 && minutesAfter <= (duration + 15);
-  const isValidUrl = appointment.meetingUrl?.startsWith('https://meet.jit.si/');
 
-  const canJoinCall = isValidUrl &&
-    (appointment.status === 'confirmed' || appointment.status === 'inProgress') &&
-    isWithinJoinWindow;
+  const hasDoctorJoined = !!appointment.doctorJoinedAt;
+  const hasDoctorLeft = !!appointment.doctorLeftAt;
+  const isSessionEnded = appointment.status === 'completed' || appointment.status === 'rated';
+
+  // Doctor can start meeting if in window and hasn't started yet
+  const canStartMeeting = !hasDoctorJoined && !isSessionEnded && isWithinJoinWindow &&
+    (appointment.status === 'confirmed' || appointment.status === 'inProgress');
+
+  // Doctor can rejoin if already started and not ended
+  const isValidUrl = appointment.meetingUrl?.startsWith('https://meet.jit.si/');
+  const canRejoinCall = hasDoctorJoined && !hasDoctorLeft && !isSessionEnded && isValidUrl;
 
   const isApproaching = minutesBefore > 0 && minutesBefore <= 60 && !isWithinJoinWindow &&
     (appointment.status === 'confirmed' || appointment.status === 'inProgress');
@@ -43,13 +52,26 @@ export default function AppointmentCard({ appointment, showJoinLink = true }: Ap
   const isAudio = appointment.consultationType === 'audio';
   const CallIcon = isAudio ? Phone : Video;
 
+  const handleStartMeeting = async () => {
+    setStarting(true);
+    try {
+      await markDoctorJoined(appointment.userId, appointment.id);
+    } catch (err) {
+      console.error('Failed to start meeting:', err);
+    } finally {
+      setStarting(false);
+    }
+  };
+
   return (
     <div className={`p-4 rounded-xl border transition-all ${
-      canJoinCall
+      canRejoinCall
         ? 'bg-emerald-50/50 border-emerald-200/60 shadow-sm ring-1 ring-emerald-200/40'
-        : isUpcoming
-          ? 'bg-violet-50/50 border-violet-200/60 shadow-sm'
-          : 'bg-white border-slate-200/60 hover:border-slate-300'
+        : canStartMeeting
+          ? 'bg-violet-50/50 border-violet-200/60 shadow-sm ring-1 ring-violet-200/40'
+          : isUpcoming
+            ? 'bg-violet-50/50 border-violet-200/60 shadow-sm'
+            : 'bg-white border-slate-200/60 hover:border-slate-300'
     }`}>
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-3">
@@ -81,11 +103,19 @@ export default function AppointmentCard({ appointment, showJoinLink = true }: Ap
         </div>
 
         {/* Status Badge */}
-        <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${
-          APPOINTMENT_STATUS_COLORS[appointment.status]
-        }`}>
-          {APPOINTMENT_STATUS_LABELS[appointment.status]}
-        </span>
+        <div className="flex flex-col items-end gap-1">
+          <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${
+            APPOINTMENT_STATUS_COLORS[appointment.status]
+          }`}>
+            {APPOINTMENT_STATUS_LABELS[appointment.status]}
+          </span>
+          {hasDoctorJoined && !isSessionEnded && (
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-emerald-100 text-emerald-700 font-medium">
+              <CheckCircle2 className="w-3 h-3" />
+              Meeting Started
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Approaching indicator */}
@@ -98,8 +128,32 @@ export default function AppointmentCard({ appointment, showJoinLink = true }: Ap
         </div>
       )}
 
-      {/* Join Call Button */}
-      {canJoinCall && showJoinLink && (
+      {/* Start Meeting Button (Step 1 - before doctorJoinedAt is set) */}
+      {canStartMeeting && showJoinLink && (
+        <div className="mt-3 pt-3 border-t border-violet-100 flex items-center gap-3">
+          <button
+            onClick={handleStartMeeting}
+            disabled={starting}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 transition-colors shadow-sm disabled:opacity-50"
+          >
+            {starting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <CallIcon className="w-4 h-4" />
+            )}
+            {starting ? 'Starting...' : 'Start Meeting'}
+          </button>
+          <Link
+            href={`/portal/consultation?appointmentId=${appointment.id}&userId=${appointment.userId}`}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-100 text-violet-700 text-sm font-medium hover:bg-violet-200 transition-colors"
+          >
+            Open Console
+          </Link>
+        </div>
+      )}
+
+      {/* Rejoin Call (Step 2 - after doctorJoinedAt is set) */}
+      {canRejoinCall && showJoinLink && (
         <div className="mt-3 pt-3 border-t border-emerald-100 flex items-center gap-3">
           <a
             href={appointment.meetingUrl!}
@@ -108,7 +162,7 @@ export default function AppointmentCard({ appointment, showJoinLink = true }: Ap
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition-colors shadow-sm"
           >
             <CallIcon className="w-4 h-4" />
-            Join {isAudio ? 'Audio' : 'Video'} Call
+            Rejoin {isAudio ? 'Audio' : 'Video'} Call
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
           <Link
