@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   CalendarCheck,
@@ -8,7 +8,9 @@ import {
   CheckCircle2,
   Star,
   ArrowRight,
+  Video,
 } from 'lucide-react';
+import { differenceInMinutes } from 'date-fns';
 import Link from 'next/link';
 import AuthGuard from '@/components/portal/AuthGuard';
 import PortalSidebar from '@/components/portal/PortalSidebar';
@@ -28,6 +30,23 @@ export default function DashboardPage() {
 function DashboardContent() {
   const { specialist } = useAuth();
   const { appointments, upcoming, completed, paid, loading } = useAppointments(specialist?.id);
+
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Active calls: appointments within the join window (±15 min of scheduled time)
+  const activeCalls = appointments.filter((a) => {
+    if (a.status !== 'confirmed' && a.status !== 'inProgress') return false;
+    if (!a.meetingUrl?.startsWith('https://meet.jit.si/')) return false;
+    const scheduled = new Date(a.scheduledAt);
+    const minBefore = differenceInMinutes(scheduled, now);
+    const minAfter = differenceInMinutes(now, scheduled);
+    const duration = a.durationMinutes || 30;
+    return minBefore <= 15 && minAfter <= (duration + 15);
+  });
 
   const totalIncome = paid.reduce(() => {
     return specialist?.priceInCents ?? 0;
@@ -85,6 +104,25 @@ function DashboardContent() {
               color="amber"
             />
           </div>
+
+          {/* Active Calls */}
+          {!loading && activeCalls.length > 0 && (
+            <div className="bg-emerald-50 rounded-2xl border border-emerald-200/60 p-6 mb-6 ring-1 ring-emerald-200/40">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                <h2 className="text-lg font-bold text-emerald-900">Active Calls</h2>
+                <span className="ml-auto flex items-center gap-1 text-xs text-emerald-600 font-medium">
+                  <Video className="w-3.5 h-3.5" />
+                  {activeCalls.length} session{activeCalls.length !== 1 ? 's' : ''} ready
+                </span>
+              </div>
+              <div className="space-y-3">
+                {activeCalls.map((apt) => (
+                  <AppointmentCard key={apt.id} appointment={apt} />
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Upcoming Appointments */}
           <div className="bg-white rounded-2xl border border-slate-200/60 p-6">

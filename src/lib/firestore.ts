@@ -109,6 +109,7 @@ function appointmentFromDoc(data: DocumentData, id: string): Appointment {
     rating: data.rating ?? null,
     ratingComment: data.ratingComment ?? null,
     durationMinutes: data.durationMinutes ?? 30,
+    meetingUrl: data.meetingUrl ?? null,
   };
 }
 
@@ -125,4 +126,49 @@ export function watchAppointmentsForSpecialist(
     const appointments = snapshot.docs.map((d) => appointmentFromDoc(d.data(), d.id));
     callback(appointments);
   });
+}
+
+export async function updateAppointmentStatus(
+  userId: string,
+  appointmentId: string,
+  status: string,
+): Promise<void> {
+  await updateDoc(
+    doc(db, 'users', userId, 'appointments', appointmentId),
+    { status },
+  );
+}
+
+export function watchConsultationMessages(
+  userId: string,
+  appointmentId: string,
+  callback: (messages: ConsultationMessage[]) => void,
+) {
+  const q = query(
+    collection(db, 'users', userId, 'appointments', appointmentId, 'messages'),
+    orderBy('timestamp', 'asc'),
+  );
+  return onSnapshot(q, (snapshot) => {
+    const messages = snapshot.docs.map((d) => {
+      const data = d.data();
+      return {
+        id: d.id,
+        senderId: data.senderId ?? '',
+        senderName: data.senderName ?? '',
+        text: data.text ?? '',
+        timestamp: data.timestamp ?? '',
+        isAnonymous: data.isAnonymous ?? false,
+      };
+    });
+    callback(messages);
+  });
+}
+
+export interface ConsultationMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  timestamp: string;
+  isAnonymous: boolean;
 }
