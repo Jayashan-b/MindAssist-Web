@@ -116,6 +116,8 @@ function appointmentFromDoc(data: DocumentData, id: string): Appointment {
     doctorJoinedAt: data.doctorJoinedAt ?? null,
     doctorLeftAt: data.doctorLeftAt ?? null,
     sessionStartedAt: data.sessionStartedAt ?? null,
+    patientName: data.patientName ?? null,
+    patientEmail: data.patientEmail ?? null,
   };
 }
 

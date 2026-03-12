@@ -66,6 +66,8 @@ export interface Appointment {
   doctorJoinedAt: string | null;
   doctorLeftAt: string | null;
   sessionStartedAt: string | null;
+  patientName: string | null;
+  patientEmail: string | null;
 }
 
 export const SPECIALTIES = ['Psychiatrist', 'Psychologist', 'Counsellor'] as const;

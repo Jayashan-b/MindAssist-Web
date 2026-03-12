@@ -125,7 +125,8 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
 
   const isAudio = appointment.consultationType === 'audio';
   const CallIcon = isAudio ? Phone : Video;
-  const isSessionEnded = appointment.status === 'completed' || appointment.status === 'rated';
+  const isCancelled = appointment.status === 'cancelled';
+  const isSessionEnded = appointment.status === 'completed' || appointment.status === 'rated' || isCancelled;
   const hasDoctorJoined = !!appointment.doctorJoinedAt;
   const hasDoctorLeft = !!appointment.doctorLeftAt;
 
@@ -138,7 +139,7 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
 
   const displayName = appointment.anonymousMode
     ? appointment.anonymousAlias || 'Anonymous Patient'
-    : 'Patient';
+    : appointment.patientName || 'Patient';
 
   const handleStartMeeting = async () => {
     setStarting(true);
@@ -205,7 +206,12 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
             Session with {displayName}
           </p>
         </div>
-        {isSessionEnded && (
+        {isCancelled && (
+          <span className="ml-auto px-3 py-1 rounded-lg text-xs font-semibold bg-red-100 text-red-600">
+            Cancelled
+          </span>
+        )}
+        {isSessionEnded && !isCancelled && (
           <span className="ml-auto px-3 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600">
             Session Ended
           </span>
@@ -309,6 +315,12 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
                   <span className="px-1.5 py-0.5 rounded text-xs bg-violet-100 text-violet-600">Anonymous</span>
                 )}
               </div>
+              {!appointment.anonymousMode && appointment.patientEmail && (
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-slate-500">Email:</span>
+                  <span className="text-slate-700">{appointment.patientEmail}</span>
+                </div>
+              )}
               <div className="flex items-center gap-2 text-sm">
                 <Calendar className="w-3.5 h-3.5 text-slate-400" />
                 <span className="text-slate-600">{format(scheduledDate, 'EEEE, MMM d, yyyy')}</span>
@@ -322,6 +334,25 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-slate-500">Type:</span>
                 <span className="capitalize text-slate-700">{appointment.consultationType}</span>
+              </div>
+            </div>
+
+            {/* Payment Info */}
+            <div className="mt-3 pt-3 border-t border-slate-100">
+              <p className="text-xs text-slate-500 mb-1.5">Payment</p>
+              <div className="flex items-center gap-2 text-sm">
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                  appointment.paymentStatus === 'success'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-amber-100 text-amber-700'
+                }`}>
+                  {appointment.paymentStatus === 'success' ? 'Paid' : 'Pending'}
+                </span>
+                {appointment.paymentId && (
+                  <span className="text-xs text-slate-400 font-mono truncate" title={appointment.paymentId}>
+                    {appointment.paymentId.slice(0, 20)}...
+                  </span>
+                )}
               </div>
             </div>
 
