@@ -83,6 +83,14 @@ export const SPECIALIZATIONS = [
 
 export const CONSULTATION_TYPES = ['video', 'audio'] as const;
 
+// SLMC Registration Number format validation
+// Accepts: SLMC-12345, SLMC/12345, SLMC12345, or plain 4-6 digit numbers
+export const SLMC_REGEX = /^(SLMC[-/]?\d{4,6}|\d{4,6})$/i;
+
+export function isValidSlmcNumber(value: string): boolean {
+  return SLMC_REGEX.test(value.trim());
+}
+
 export const TIME_SLOTS = [
   '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
   '11:00', '11:30', '12:00', '12:30', '13:00', '13:30',
