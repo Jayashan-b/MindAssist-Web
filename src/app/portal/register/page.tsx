@@ -51,6 +51,7 @@ export default function RegisterPage() {
   const [clinicAddress, setClinicAddress] = useState('');
   const [consultationFee, setConsultationFee] = useState<number>(3000);
   const [selectedConsultationTypes, setSelectedConsultationTypes] = useState<string[]>(['video', 'audio']);
+  const [isOnCall, setIsOnCall] = useState(false);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -132,6 +133,7 @@ export default function RegisterPage() {
       consultationTypes: selectedConsultationTypes,
       availableSlots: null,
       reviews: [],
+      isOnCall,
     };
 
     try {
@@ -420,6 +422,29 @@ export default function RegisterPage() {
                         </button>
                       ))}
                     </div>
+                  </div>
+
+                  {/* On-Call Toggle */}
+                  <div className="flex items-center justify-between p-4 bg-amber-50/50 border border-amber-200/60 rounded-xl">
+                    <div>
+                      <p className="font-semibold text-sm text-slate-800">Available for Emergency / On-Call</p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Allow patients to request immediate consultations
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsOnCall(!isOnCall)}
+                      className={`relative w-12 h-7 rounded-full transition-colors ${
+                        isOnCall ? 'bg-amber-500' : 'bg-slate-300'
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${
+                          isOnCall ? 'left-[22px]' : 'left-0.5'
+                        }`}
+                      />
+                    </button>
                   </div>
 
                   {/* Summary Preview */}

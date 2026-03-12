@@ -32,6 +32,7 @@ function ProfileContent() {
   const [isAvailable, setIsAvailable] = useState(true);
   const [consultationFee, setConsultationFee] = useState(0);
   const [qualifications, setQualifications] = useState<string[]>([]);
+  const [isOnCall, setIsOnCall] = useState(false);
 
   useEffect(() => {
     if (specialist) {
@@ -43,6 +44,7 @@ function ProfileContent() {
       setIsAvailable(specialist.isAvailable);
       setConsultationFee(specialist.priceInCents / 100);
       setQualifications(specialist.qualifications);
+      setIsOnCall(specialist.isOnCall);
     }
   }, [specialist]);
 
@@ -69,6 +71,7 @@ function ProfileContent() {
         priceInCents: consultationFee * 100,
         priceFormatted: `LKR ${consultationFee.toLocaleString()}`,
         qualifications,
+        isOnCall,
       });
       await refreshSpecialist();
       setSaved(true);
@@ -167,6 +170,26 @@ function ProfileContent() {
                 <span
                   className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${
                     isAvailable ? 'left-[22px]' : 'left-0.5'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* On-Call */}
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div>
+                <p className="font-semibold text-slate-800">Available for Emergency / On-Call</p>
+                <p className="text-xs text-slate-400">Show as available for urgent consultations</p>
+              </div>
+              <button
+                onClick={() => setIsOnCall(!isOnCall)}
+                className={`relative w-12 h-7 rounded-full transition-colors ${
+                  isOnCall ? 'bg-amber-500' : 'bg-slate-300'
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${
+                    isOnCall ? 'left-[22px]' : 'left-0.5'
                   }`}
                 />
               </button>

@@ -41,6 +41,7 @@ export function specialistFromDoc(data: DocumentData, id: string): Specialist {
     consultationTypes: data.consultationTypes ?? ['video', 'audio'],
     availableSlots: data.availableSlots ?? null,
     reviews: data.reviews ?? [],
+    isOnCall: data.isOnCall ?? false,
   };
 }
 
