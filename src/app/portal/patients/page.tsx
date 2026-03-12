@@ -180,6 +180,7 @@ function PatientsContent() {
         {/* Patient Profile Modal */}
         {selectedPatient && (
           <PatientProfileModal
+            key={selectedPatient.userId}
             open={!!selectedPatient}
             onClose={() => setSelectedPatient(null)}
             patient={selectedPatient}

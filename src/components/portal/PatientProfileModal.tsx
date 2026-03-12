@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Calendar, Star, FileText, FolderOpen, Clock, Video, Phone, Plus, Pencil, Trash2, Loader2, ShieldQuestion, Share2, Download } from 'lucide-react';
+import { X, Calendar, Star, FileText, FolderOpen, Clock, Video, Phone, Plus, Pencil, Trash2, Loader2, ShieldQuestion, Share2, Download, MessageCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import type { PatientProfile, PatientNote, Appointment } from '@/lib/types';
 import { APPOINTMENT_STATUS_LABELS, APPOINTMENT_STATUS_COLORS } from '@/lib/types';
 import { usePatientNotes } from '@/lib/hooks/usePatientNotes';
 import { usePatientDocuments } from '@/lib/hooks/usePatientDocuments';
 import { usePatientUploads } from '@/lib/hooks/usePatientUploads';
+import { usePatientMessage } from '@/lib/hooks/usePatientMessage';
 import PatientAvatar from './PatientAvatar';
 import PatientNoteEditor from './PatientNoteEditor';
 import PatientDocumentUploader from './PatientDocumentUploader';
@@ -35,6 +36,7 @@ export default function PatientProfileModal({
   const { notes, loading: notesLoading, addNote, editNote, removeNote, toggleSharing: toggleNoteSharing } = usePatientNotes(specialistId, patient.userId);
   const { documents, loading: docsLoading, uploading, uploadDocument, removeDocument, toggleSharing: toggleDocSharing } = usePatientDocuments(specialistId, patient.userId);
   const { uploads } = usePatientUploads(specialistId, patient.userId);
+  const { message: patientMessage } = usePatientMessage(specialistId, patient.userId);
 
   if (!open) return null;
 
@@ -243,6 +245,20 @@ export default function PatientProfileModal({
           {/* Notes Tab */}
           {tab === 'notes' && (
             <div className="space-y-4">
+              {/* Patient message to doctor */}
+              {patientMessage && (
+                <div className="bg-teal-50 border border-teal-200 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <MessageCircle className="w-4 h-4 text-teal-600" />
+                    <span className="text-xs font-semibold text-teal-700">Message from Patient</span>
+                    <span className="text-[10px] text-teal-500 ml-auto">
+                      {format(new Date(patientMessage.sentAt), 'MMM d, yyyy hh:mm a')}
+                    </span>
+                  </div>
+                  <p className="text-sm text-teal-800 whitespace-pre-wrap">{patientMessage.content}</p>
+                </div>
+              )}
+
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-slate-700">
                   {notes.length} Note{notes.length !== 1 ? 's' : ''}

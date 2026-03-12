@@ -41,6 +41,7 @@ export function usePatientNotes(specialistId: string | undefined, patientUserId:
         updatedAt: now,
         appointmentId: appointmentId ?? null,
         tags,
+        sharedWithPatient: false,
       });
     },
     [specialistId, patientUserId],

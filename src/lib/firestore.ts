@@ -407,6 +407,29 @@ export async function toggleDocumentSharing(
   );
 }
 
+// ── Patient messages (Flutter → web read) ───────────────────────
+
+export function watchPatientMessage(
+  specialistId: string,
+  patientUserId: string,
+  callback: (message: import('./types').PatientMessage | null) => void,
+): () => void {
+  const docRef = doc(db, 'specialists', specialistId, 'patientMessages', patientUserId);
+  return onSnapshot(docRef, (snap) => {
+    if (!snap.exists()) {
+      callback(null);
+      return;
+    }
+    const data = snap.data();
+    callback({
+      id: snap.id,
+      patientUserId: data.patientUserId ?? '',
+      content: data.content ?? '',
+      sentAt: data.sentAt?.toDate?.()?.toISOString?.() ?? new Date().toISOString(),
+    });
+  });
+}
+
 // ── Patient uploads (Flutter → web read) ────────────────────────
 
 function patientUploadFromDoc(data: DocumentData, id: string): PatientUpload {

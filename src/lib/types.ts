@@ -214,6 +214,13 @@ export interface PatientUpload {
   description: string | null;
 }
 
+export interface PatientMessage {
+  id: string;
+  patientUserId: string;
+  content: string;
+  sentAt: string;
+}
+
 export interface PatientProfile {
   /** Unique key for lists/React keys. For anonymous sessions equals `anon:{appointmentId}`. */
   profileKey: string;
