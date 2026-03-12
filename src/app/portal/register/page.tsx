@@ -137,6 +137,7 @@ export default function RegisterPage() {
       isOnCall,
       onCallPriceInCents: isOnCall ? onCallFee * 100 : priceInCents,
       onCallPriceFormatted: isOnCall ? `LKR ${onCallFee.toLocaleString()}` : `LKR ${consultationFee.toLocaleString()}`,
+      sessionDurationMinutes: 30,
     };
 
     try {

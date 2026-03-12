@@ -1,14 +1,16 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { DayPicker } from 'react-day-picker';
-import { format, isBefore, startOfDay } from 'date-fns';
-import { CalendarClock, Plus, X, Trash2, Clock } from 'lucide-react';
+import { format } from 'date-fns';
+import { CalendarClock, Plus, X, Trash2, Clock, Users } from 'lucide-react';
 import AuthGuard from '@/components/portal/AuthGuard';
 import PortalSidebar from '@/components/portal/PortalSidebar';
+import SlotCalendar from '@/components/portal/SlotCalendar';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { useSlots } from '@/lib/hooks/useSlots';
+import { useAppointments } from '@/lib/hooks/useAppointments';
+import { getBookedSlotsForSpecialist } from '@/lib/firestore';
 import { TIME_SLOTS, SLOT_PRESETS, getSlotPeriod } from '@/lib/types';
 
 export default function SlotsPage() {
@@ -22,15 +24,37 @@ export default function SlotsPage() {
 function SlotsContent() {
   const { specialist } = useAuth();
   const { slots, addSlot, removeSlot, clearPastSlots, addBulkSlots } = useSlots(specialist);
+  const { appointments } = useAppointments(specialist?.id);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [showTimeDropdown, setShowTimeDropdown] = useState(false);
   const [saving, setSaving] = useState(false);
   const [customTime, setCustomTime] = useState('');
+  const [bookedSlots, setBookedSlots] = useState<string[]>([]);
 
   const selectedDateStr = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : '';
   const slotsForDate = selectedDateStr ? (slots[selectedDateStr] || []) : [];
 
   const datesWithSlots = Object.keys(slots).map((d) => new Date(d + 'T00:00:00'));
+
+  // Dates that have booked appointments
+  const datesWithBookings = useMemo(() => {
+    const dateSet = new Set<string>();
+    for (const apt of appointments) {
+      if (apt.status === 'cancelled') continue;
+      const d = new Date(apt.scheduledAt).toISOString().split('T')[0];
+      dateSet.add(d);
+    }
+    return Array.from(dateSet).map((d) => new Date(d + 'T00:00:00'));
+  }, [appointments]);
+
+  // Load booked slots for the selected date
+  useEffect(() => {
+    if (!specialist?.id || !selectedDateStr) {
+      setBookedSlots([]);
+      return;
+    }
+    getBookedSlotsForSpecialist(specialist.id, selectedDateStr).then(setBookedSlots);
+  }, [specialist?.id, selectedDateStr, appointments]);
 
   const handleAddSlot = async (time: string) => {
     if (!selectedDateStr) return;
@@ -73,8 +97,8 @@ function SlotsContent() {
   };
 
   const availableTimesToAdd = TIME_SLOTS.filter((t) => !slotsForDate.includes(t));
-
   const totalSlotCount = Object.values(slots).reduce((sum, arr) => sum + arr.length, 0);
+  const totalBookedCount = bookedSlots.length;
 
   return (
     <div className="flex min-h-screen bg-slate-50">
@@ -95,7 +119,7 @@ function SlotsContent() {
             </div>
             <div className="flex items-center gap-3">
               <span className="text-xs text-slate-400">
-                {totalSlotCount} total slot{totalSlotCount !== 1 ? 's' : ''} across{' '}
+                {totalSlotCount} slot{totalSlotCount !== 1 ? 's' : ''} across{' '}
                 {Object.keys(slots).length} day{Object.keys(slots).length !== 1 ? 's' : ''}
               </span>
               <button
@@ -109,30 +133,14 @@ function SlotsContent() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-6">
-            {/* Calendar */}
+            {/* Enhanced Calendar */}
             <div className="bg-white rounded-2xl border border-slate-200/60 p-6">
-              <DayPicker
-                mode="single"
-                selected={selectedDate}
+              <SlotCalendar
+                selectedDate={selectedDate}
                 onSelect={setSelectedDate}
-                disabled={(date) => isBefore(date, startOfDay(new Date()))}
-                modifiers={{
-                  hasSlots: datesWithSlots,
-                }}
-                modifiersStyles={{
-                  hasSlots: {
-                    backgroundColor: '#ede9fe',
-                    color: '#6d28d9',
-                    fontWeight: 700,
-                    borderRadius: '8px',
-                  },
-                }}
-                className="mx-auto"
+                datesWithSlots={datesWithSlots}
+                datesWithBookings={datesWithBookings}
               />
-              <div className="mt-4 flex items-center gap-2 justify-center">
-                <div className="w-3 h-3 rounded bg-violet-200" />
-                <span className="text-xs text-slate-500">Has slots</span>
-              </div>
             </div>
 
             {/* Slot Editor */}
@@ -140,9 +148,17 @@ function SlotsContent() {
               {selectedDate ? (
                 <>
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-bold text-slate-900">
-                      {format(selectedDate, 'EEEE, MMMM d, yyyy')}
-                    </h2>
+                    <div>
+                      <h2 className="text-lg font-bold text-slate-900">
+                        {format(selectedDate, 'EEEE, MMMM d, yyyy')}
+                      </h2>
+                      {totalBookedCount > 0 && (
+                        <p className="text-xs text-emerald-600 font-medium mt-0.5 flex items-center gap-1">
+                          <Users className="w-3 h-3" />
+                          {totalBookedCount} booked session{totalBookedCount !== 1 ? 's' : ''} on this day
+                        </p>
+                      )}
+                    </div>
                     <div className="relative">
                       <button
                         onClick={() => setShowTimeDropdown(!showTimeDropdown)}
@@ -160,6 +176,7 @@ function SlotsContent() {
                               const period = getSlotPeriod(time);
                               const showHeader = period !== lastPeriod;
                               lastPeriod = period;
+                              const isBooked = bookedSlots.includes(time);
                               return (
                                 <React.Fragment key={time}>
                                   {showHeader && (
@@ -169,9 +186,14 @@ function SlotsContent() {
                                   )}
                                   <button
                                     onClick={() => handleAddSlot(time)}
-                                    className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition-colors"
+                                    className={`w-full px-4 py-2 text-left text-sm transition-colors ${
+                                      isBooked
+                                        ? 'text-emerald-600 bg-emerald-50/50 hover:bg-emerald-50'
+                                        : 'text-slate-700 hover:bg-violet-50 hover:text-violet-700'
+                                    }`}
                                   >
                                     {time}
+                                    {isBooked && <span className="ml-2 text-[10px] text-emerald-500 font-medium">(booked)</span>}
                                   </button>
                                 </React.Fragment>
                               );
@@ -216,24 +238,40 @@ function SlotsContent() {
                   {/* Time Slots Grid */}
                   {slotsForDate.length > 0 ? (
                     <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                      {slotsForDate.map((time) => (
-                        <div
-                          key={time}
-                          className="group flex items-center justify-between px-3 py-2.5 bg-violet-50 rounded-xl border border-violet-200/60"
-                        >
-                          <span className="flex items-center gap-2 text-sm font-medium text-violet-700">
-                            <Clock className="w-3.5 h-3.5" />
-                            {time}
-                          </span>
-                          <button
-                            onClick={() => handleRemoveSlot(time)}
-                            disabled={saving}
-                            className="opacity-0 group-hover:opacity-100 p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-all"
+                      {slotsForDate.map((time) => {
+                        const isBooked = bookedSlots.includes(time);
+                        return (
+                          <div
+                            key={time}
+                            className={`group flex items-center justify-between px-3 py-2.5 rounded-xl border ${
+                              isBooked
+                                ? 'bg-emerald-50 border-emerald-200/60'
+                                : 'bg-violet-50 border-violet-200/60'
+                            }`}
                           >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))}
+                            <span className={`flex items-center gap-2 text-sm font-medium ${
+                              isBooked ? 'text-emerald-700' : 'text-violet-700'
+                            }`}>
+                              <Clock className="w-3.5 h-3.5" />
+                              {time}
+                              {isBooked && (
+                                <span className="text-[10px] bg-emerald-100 text-emerald-600 px-1 py-0.5 rounded font-semibold">
+                                  BOOKED
+                                </span>
+                              )}
+                            </span>
+                            {!isBooked && (
+                              <button
+                                onClick={() => handleRemoveSlot(time)}
+                                disabled={saving}
+                                className="opacity-0 group-hover:opacity-100 p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-all"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="text-center py-16">
