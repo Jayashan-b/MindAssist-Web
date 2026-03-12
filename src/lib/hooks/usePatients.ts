@@ -45,8 +45,14 @@ export function usePatients(appointments: Appointment[]) {
 
       const isAnon = apts[0].anonymousMode;
 
+      // For anonymous: prefer alias stored in Firestore (written by Flutter mobile app).
+      // Fall back to generateAnonName only for legacy data that still has the old
+      // "Anonymous User #XXXX" format (pre-fix bookings).
+      const firestoreAlias = apts[0].anonymousAlias;
       const displayName = isAnon
-        ? generateAnonName(apts[0].id)   // deterministic cool name from appointment ID
+        ? (firestoreAlias && !firestoreAlias.startsWith('Anonymous User')
+            ? firestoreAlias
+            : generateAnonName(apts[0].id))
         : apts.find((a) => a.patientName)?.patientName ?? 'Patient';
 
       const email = isAnon

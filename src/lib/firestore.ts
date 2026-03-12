@@ -119,8 +119,9 @@ function appointmentFromDoc(data: DocumentData, id: string): Appointment {
     doctorJoinedAt: data.doctorJoinedAt ?? null,
     doctorLeftAt: data.doctorLeftAt ?? null,
     sessionStartedAt: data.sessionStartedAt ?? null,
-    patientName: data.patientName ?? null,
-    patientEmail: data.patientEmail ?? null,
+    // Defence-in-depth: never surface identity for anonymous sessions
+    patientName: (data.anonymousMode === true) ? null : (data.patientName ?? null),
+    patientEmail: (data.anonymousMode === true) ? null : (data.patientEmail ?? null),
     cancelledAt: data.cancelledAt ?? null,
     cancelledBy: data.cancelledBy ?? null,
     cancellationReason: data.cancellationReason ?? null,

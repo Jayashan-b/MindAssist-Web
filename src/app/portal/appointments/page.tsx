@@ -8,7 +8,7 @@ import PortalSidebar from '@/components/portal/PortalSidebar';
 import AppointmentCard from '@/components/portal/AppointmentCard';
 import SessionNotificationBanner from '@/components/portal/SessionNotificationBanner';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { useAppointments } from '@/lib/hooks/useAppointments';
+import { useAppointments, isStaleInProgress } from '@/lib/hooks/useAppointments';
 import { useSessionNotifications } from '@/lib/hooks/useSessionNotifications';
 
 type TabFilter = 'all' | 'upcoming' | 'inProgress' | 'completed' | 'cancelled';
@@ -67,8 +67,11 @@ function AppointmentsContent() {
     if (sortOrder === 'smart') {
       const now = Date.now();
       sorted.sort((a, b) => {
-        const prioA = STATUS_PRIORITY[a.status] ?? 9;
-        const prioB = STATUS_PRIORITY[b.status] ?? 9;
+        // Stale inProgress sessions are treated as completed for sorting
+        const statusA = (a.status === 'inProgress' && isStaleInProgress(a)) ? 'completed' : a.status;
+        const statusB = (b.status === 'inProgress' && isStaleInProgress(b)) ? 'completed' : b.status;
+        const prioA = STATUS_PRIORITY[statusA] ?? 9;
+        const prioB = STATUS_PRIORITY[statusB] ?? 9;
         // Primary: status priority (in-progress first)
         if (prioA !== prioB) return prioA - prioB;
         // Secondary: for upcoming/in-progress, soonest first; for past, newest first

@@ -4,6 +4,19 @@ import { useEffect, useState, useMemo } from 'react';
 import { watchAppointmentsForSpecialist } from '../firestore';
 import type { Appointment } from '../types';
 
+/**
+ * An inProgress appointment is considered stale if the scheduled time
+ * plus 3× the session duration has already passed. This handles sessions
+ * that ended without a proper completion event (e.g. app crash, network drop).
+ * Stale sessions are excluded from the active inProgress list and treated
+ * as completed for sorting/display.
+ */
+export function isStaleInProgress(apt: Appointment): boolean {
+  if (apt.status !== 'inProgress') return false;
+  const cutoff = new Date(apt.scheduledAt).getTime() + (apt.durationMinutes || 30) * 3 * 60 * 1000;
+  return Date.now() > cutoff;
+}
+
 export function useAppointments(specialistId: string | undefined) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,7 +45,10 @@ export function useAppointments(specialistId: string | undefined) {
 
   const cancelled = appointments.filter((a) => a.status === 'cancelled');
 
-  const inProgress = appointments.filter((a) => a.status === 'inProgress');
+  // Exclude stale inProgress appointments — they won't appear in the active list
+  const inProgress = appointments.filter(
+    (a) => a.status === 'inProgress' && !isStaleInProgress(a),
+  );
 
   const paid = appointments.filter((a) => a.paymentStatus === 'success');
 
