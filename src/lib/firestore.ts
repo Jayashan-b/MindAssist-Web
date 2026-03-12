@@ -288,6 +288,9 @@ export function watchPatientNotes(
   return onSnapshot(q, (snapshot) => {
     const notes = snapshot.docs.map((d) => noteFromDoc(d.data(), d.id));
     callback(notes);
+  }, (error) => {
+    console.error('watchPatientNotes error:', error);
+    callback([]);
   });
 }
 
@@ -350,6 +353,9 @@ export function watchPatientDocuments(
   return onSnapshot(q, (snapshot) => {
     const docs = snapshot.docs.map((d) => docFromDoc(d.data(), d.id));
     callback(docs);
+  }, (error) => {
+    console.error('watchPatientDocuments error:', error);
+    callback([]);
   });
 }
 
