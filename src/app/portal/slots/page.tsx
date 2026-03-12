@@ -9,7 +9,7 @@ import AuthGuard from '@/components/portal/AuthGuard';
 import PortalSidebar from '@/components/portal/PortalSidebar';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { useSlots } from '@/lib/hooks/useSlots';
-import { TIME_SLOTS } from '@/lib/types';
+import { TIME_SLOTS, SLOT_PRESETS, getSlotPeriod } from '@/lib/types';
 
 export default function SlotsPage() {
   return (
@@ -25,6 +25,7 @@ function SlotsContent() {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [showTimeDropdown, setShowTimeDropdown] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [customTime, setCustomTime] = useState('');
 
   const selectedDateStr = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : '';
   const slotsForDate = selectedDateStr ? (slots[selectedDateStr] || []) : [];
@@ -46,18 +47,23 @@ function SlotsContent() {
     setSaving(false);
   };
 
-  const handleAddAllMorning = async () => {
+  const handleAddPreset = async (presetKey: string) => {
     if (!selectedDateStr) return;
+    const preset = SLOT_PRESETS[presetKey];
+    if (!preset) return;
     setSaving(true);
-    await addBulkSlots(selectedDateStr, ['09:00', '09:30', '10:00', '10:30', '11:00', '11:30']);
+    const newSlots = preset.slots.filter((t) => !slotsForDate.includes(t));
+    if (newSlots.length > 0) await addBulkSlots(selectedDateStr, newSlots);
     setSaving(false);
   };
 
-  const handleAddAllAfternoon = async () => {
-    if (!selectedDateStr) return;
+  const handleAddCustomTime = async () => {
+    if (!selectedDateStr || !customTime) return;
+    if (slotsForDate.includes(customTime)) return;
     setSaving(true);
-    await addBulkSlots(selectedDateStr, ['14:00', '14:30', '15:00', '15:30', '16:00', '16:30']);
+    await addSlot(selectedDateStr, customTime);
     setSaving(false);
+    setCustomTime('');
   };
 
   const handleClearPast = async () => {
@@ -147,36 +153,63 @@ function SlotsContent() {
                       </button>
 
                       {showTimeDropdown && (
-                        <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-200 py-2 z-10 max-h-60 overflow-y-auto">
-                          {availableTimesToAdd.map((time) => (
-                            <button
-                              key={time}
-                              onClick={() => handleAddSlot(time)}
-                              className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition-colors"
-                            >
-                              {time}
-                            </button>
-                          ))}
+                        <div className="absolute right-0 top-full mt-2 w-52 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-10 max-h-72 overflow-y-auto">
+                          {(() => {
+                            let lastPeriod = '';
+                            return availableTimesToAdd.map((time) => {
+                              const period = getSlotPeriod(time);
+                              const showHeader = period !== lastPeriod;
+                              lastPeriod = period;
+                              return (
+                                <React.Fragment key={time}>
+                                  {showHeader && (
+                                    <div className="px-4 py-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider bg-slate-50 sticky top-0">
+                                      {period}
+                                    </div>
+                                  )}
+                                  <button
+                                    onClick={() => handleAddSlot(time)}
+                                    className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition-colors"
+                                  >
+                                    {time}
+                                  </button>
+                                </React.Fragment>
+                              );
+                            });
+                          })()}
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Quick Add */}
-                  <div className="flex gap-2 mb-4">
+                  {/* Quick Add Presets */}
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {Object.entries(SLOT_PRESETS).map(([key, preset]) => (
+                      <button
+                        key={key}
+                        onClick={() => handleAddPreset(key)}
+                        disabled={saving}
+                        className="px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-all disabled:opacity-50"
+                      >
+                        + {preset.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Custom Time Input */}
+                  <div className="flex items-center gap-2 mb-4">
+                    <input
+                      type="time"
+                      value={customTime}
+                      onChange={(e) => setCustomTime(e.target.value)}
+                      className="px-3 py-2 bg-slate-50/80 border border-slate-200 rounded-xl text-sm text-slate-900 focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 outline-none transition-all"
+                    />
                     <button
-                      onClick={handleAddAllMorning}
-                      disabled={saving}
-                      className="px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-all disabled:opacity-50"
+                      onClick={handleAddCustomTime}
+                      disabled={saving || !customTime || slotsForDate.includes(customTime)}
+                      className="px-4 py-2 text-sm font-medium bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      + Morning (9-12)
-                    </button>
-                    <button
-                      onClick={handleAddAllAfternoon}
-                      disabled={saving}
-                      className="px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-all disabled:opacity-50"
-                    >
-                      + Afternoon (2-5)
+                      Add Custom
                     </button>
                   </div>
 
