@@ -139,6 +139,9 @@ export function watchAppointmentsForSpecialist(
   return onSnapshot(q, (snapshot) => {
     const appointments = snapshot.docs.map((d) => appointmentFromDoc(d.data(), d.id));
     callback(appointments);
+  }, (error) => {
+    console.error('watchAppointmentsForSpecialist error:', error);
+    callback([]);
   });
 }
 
