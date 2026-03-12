@@ -42,6 +42,8 @@ export function specialistFromDoc(data: DocumentData, id: string): Specialist {
     availableSlots: data.availableSlots ?? null,
     reviews: data.reviews ?? [],
     isOnCall: data.isOnCall ?? false,
+    onCallPriceInCents: data.onCallPriceInCents ?? data.priceInCents ?? 0,
+    onCallPriceFormatted: data.onCallPriceFormatted ?? data.priceFormatted ?? 'LKR 0',
   };
 }
 
