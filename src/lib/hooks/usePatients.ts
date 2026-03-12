@@ -6,6 +6,11 @@ import type { Appointment, PatientProfile } from '../types';
 /**
  * Aggregates appointments into PatientProfile objects grouped by userId.
  * Notes and documents are loaded on-demand (not here).
+ *
+ * Privacy rule: if ANY appointment for a user has anonymousMode=true,
+ * the entire patient profile is treated as anonymous — no real name or
+ * email is ever surfaced to the specialist, even if other sessions from
+ * the same user were non-anonymous.
  */
 export function usePatients(appointments: Appointment[]) {
   const patients = useMemo(() => {
@@ -23,12 +28,27 @@ export function usePatients(appointments: Appointment[]) {
         (a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime(),
       );
 
-      // Determine display name from most recent non-anonymous appointment, or alias
-      const nonAnon = apts.find((a) => !a.anonymousMode && a.patientName);
-      const latestAnon = apts.find((a) => a.anonymousMode && a.anonymousAlias);
-      const displayName = nonAnon?.patientName || latestAnon?.anonymousAlias || 'Patient';
-      const email = nonAnon?.patientEmail || null;
-      const isAnonymous = !nonAnon;
+      // Privacy: if ANY appointment is anonymous, treat the whole profile as anonymous
+      const hasAnyAnonymous = apts.some((a) => a.anonymousMode);
+
+      let displayName: string;
+      let email: string | null;
+      let isAnonymous: boolean;
+
+      if (hasAnyAnonymous) {
+        // Use the alias from the most recent anonymous appointment
+        const latestAnon = [...apts]
+          .filter((a) => a.anonymousMode && a.anonymousAlias)
+          .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime())[0];
+        displayName = latestAnon?.anonymousAlias || 'Anonymous';
+        email = null;
+        isAnonymous = true;
+      } else {
+        const withName = apts.find((a) => a.patientName);
+        displayName = withName?.patientName || 'Patient';
+        email = withName?.patientEmail || null;
+        isAnonymous = false;
+      }
 
       const completedSessions = apts.filter(
         (a) => a.status === 'completed' || a.status === 'rated',

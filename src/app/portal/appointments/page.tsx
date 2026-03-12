@@ -12,6 +12,18 @@ import { useAppointments } from '@/lib/hooks/useAppointments';
 import { useSessionNotifications } from '@/lib/hooks/useSessionNotifications';
 
 type TabFilter = 'all' | 'upcoming' | 'inProgress' | 'completed' | 'cancelled';
+type SortOrder = 'smart' | 'newest' | 'oldest';
+
+// Status priority for smart sort: in-progress first, then upcoming, then rest
+const STATUS_PRIORITY: Record<string, number> = {
+  inProgress: 0,
+  confirmed: 1,
+  pending: 2,
+  pendingPayment: 3,
+  completed: 4,
+  rated: 5,
+  cancelled: 6,
+};
 
 export default function AppointmentsPage() {
   return (
@@ -27,7 +39,7 @@ function AppointmentsContent() {
   const { approachingSessions } = useSessionNotifications(appointments);
   const [tab, setTab] = useState<TabFilter>('all');
   const [search, setSearch] = useState('');
-  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('smart');
 
   const filteredAppointments = useMemo(() => {
     let list: typeof appointments;
@@ -52,11 +64,30 @@ function AppointmentsContent() {
 
     // Sort
     const sorted = [...list];
-    sorted.sort((a, b) => {
-      const da = new Date(a.scheduledAt).getTime();
-      const db = new Date(b.scheduledAt).getTime();
-      return sortOrder === 'newest' ? db - da : da - db;
-    });
+    if (sortOrder === 'smart') {
+      const now = Date.now();
+      sorted.sort((a, b) => {
+        const prioA = STATUS_PRIORITY[a.status] ?? 9;
+        const prioB = STATUS_PRIORITY[b.status] ?? 9;
+        // Primary: status priority (in-progress first)
+        if (prioA !== prioB) return prioA - prioB;
+        // Secondary: for upcoming/in-progress, soonest first; for past, newest first
+        const timeA = new Date(a.scheduledAt).getTime();
+        const timeB = new Date(b.scheduledAt).getTime();
+        if (prioA <= 3) {
+          // Upcoming / in-progress: nearest time first
+          return Math.abs(timeA - now) - Math.abs(timeB - now);
+        }
+        // Completed / cancelled: most recent first
+        return timeB - timeA;
+      });
+    } else {
+      sorted.sort((a, b) => {
+        const da = new Date(a.scheduledAt).getTime();
+        const db = new Date(b.scheduledAt).getTime();
+        return sortOrder === 'newest' ? db - da : da - db;
+      });
+    }
 
     return sorted;
   }, [tab, appointments, upcoming, inProgress, completed, cancelled, search, sortOrder]);
@@ -102,9 +133,10 @@ function AppointmentsContent() {
             </div>
             <select
               value={sortOrder}
-              onChange={(e) => setSortOrder(e.target.value as 'newest' | 'oldest')}
+              onChange={(e) => setSortOrder(e.target.value as SortOrder)}
               className="px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 outline-none cursor-pointer"
             >
+              <option value="smart">Smart</option>
               <option value="newest">Newest first</option>
               <option value="oldest">Oldest first</option>
             </select>
