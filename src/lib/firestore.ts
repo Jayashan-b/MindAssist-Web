@@ -15,7 +15,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Specialist, Appointment, PatientNote, PatientDocument } from './types';
+import type { Specialist, Appointment, PatientNote, PatientDocument, PatientUpload } from './types';
 
 // ── Specialist helpers ─────────────────────────────────────────────
 
@@ -276,6 +276,7 @@ function noteFromDoc(data: DocumentData, id: string): PatientNote {
     updatedAt: data.updatedAt ?? '',
     appointmentId: data.appointmentId ?? null,
     tags: data.tags ?? [],
+    sharedWithPatient: data.sharedWithPatient ?? false,
   };
 }
 
@@ -341,6 +342,7 @@ function docFromDoc(data: DocumentData, id: string): PatientDocument {
     uploadedAt: data.uploadedAt ?? '',
     description: data.description ?? null,
     appointmentId: data.appointmentId ?? null,
+    sharedWithPatient: data.sharedWithPatient ?? false,
   };
 }
 
@@ -379,4 +381,87 @@ export async function deletePatientDocument(
   docId: string,
 ): Promise<void> {
   await deleteDoc(doc(db, 'specialists', specialistId, 'patientDocuments', docId));
+}
+
+// ── Sharing toggles ──────────────────────────────────────────────
+
+export async function toggleNoteSharing(
+  specialistId: string,
+  noteId: string,
+  shared: boolean,
+): Promise<void> {
+  await updateDoc(
+    doc(db, 'specialists', specialistId, 'patientNotes', noteId),
+    { sharedWithPatient: shared },
+  );
+}
+
+export async function toggleDocumentSharing(
+  specialistId: string,
+  docId: string,
+  shared: boolean,
+): Promise<void> {
+  await updateDoc(
+    doc(db, 'specialists', specialistId, 'patientDocuments', docId),
+    { sharedWithPatient: shared },
+  );
+}
+
+// ── Patient messages (Flutter → web read) ───────────────────────
+
+export function watchPatientMessage(
+  specialistId: string,
+  patientUserId: string,
+  callback: (message: import('./types').PatientMessage | null) => void,
+): () => void {
+  const docRef = doc(db, 'specialists', specialistId, 'patientMessages', patientUserId);
+  return onSnapshot(docRef, (snap) => {
+    if (!snap.exists()) {
+      callback(null);
+      return;
+    }
+    const data = snap.data();
+    callback({
+      id: snap.id,
+      patientUserId: data.patientUserId ?? '',
+      content: data.content ?? '',
+      sentAt: data.sentAt?.toDate?.()?.toISOString?.() ?? new Date().toISOString(),
+    });
+  });
+}
+
+// ── Patient uploads (Flutter → web read) ────────────────────────
+
+function patientUploadFromDoc(data: DocumentData, id: string): PatientUpload {
+  return {
+    id,
+    userId: data.userId ?? '',
+    specialistId: data.specialistId ?? '',
+    appointmentId: data.appointmentId ?? '',
+    fileName: data.fileName ?? '',
+    fileUrl: data.fileUrl ?? '',
+    fileType: data.fileType ?? null,
+    fileSizeBytes: data.fileSizeBytes ?? 0,
+    uploadedAt: data.uploadedAt?.toDate?.()?.toISOString?.() ?? data.uploadedAt ?? '',
+    description: data.description ?? null,
+  };
+}
+
+export function watchPatientUploads(
+  specialistId: string,
+  patientUserId: string,
+  callback: (uploads: PatientUpload[]) => void,
+) {
+  const q = query(
+    collection(db, 'users', patientUserId, 'consultationDocuments'),
+    where('specialistId', '==', specialistId),
+    orderBy('uploadedAt', 'desc'),
+  );
+  return onSnapshot(q, (snapshot) => {
+    const uploads = snapshot.docs.map((d) => patientUploadFromDoc(d.data(), d.id));
+    callback(uploads);
+  }, (error) => {
+    console.error('watchPatientUploads error:', error);
+    callback([]);
+  });
 }

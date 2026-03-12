@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { Upload, FileText, Trash2, Loader2, Download } from 'lucide-react';
+import { Upload, FileText, Trash2, Loader2, Download, Share2 } from 'lucide-react';
 import type { PatientDocument } from '@/lib/types';
 
 interface PatientDocumentUploaderProps {
@@ -9,6 +9,7 @@ interface PatientDocumentUploaderProps {
   uploading: boolean;
   onUpload: (file: File, description?: string) => Promise<void>;
   onRemove: (doc: PatientDocument) => Promise<void>;
+  onToggleShare: (doc: PatientDocument, shared: boolean) => Promise<void>;
 }
 
 function formatBytes(bytes: number): string {
@@ -24,6 +25,7 @@ export default function PatientDocumentUploader({
   uploading,
   onUpload,
   onRemove,
+  onToggleShare,
 }: PatientDocumentUploaderProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [description, setDescription] = useState('');
@@ -105,6 +107,17 @@ export default function PatientDocumentUploader({
                 </p>
               </div>
               <div className="flex items-center gap-1">
+                <button
+                  onClick={() => onToggleShare(doc, !doc.sharedWithPatient)}
+                  title={doc.sharedWithPatient ? 'Shared with patient — click to unshare' : 'Share with patient'}
+                  className={`p-1.5 rounded-md transition-all ${
+                    doc.sharedWithPatient
+                      ? 'text-emerald-600 bg-emerald-50'
+                      : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 opacity-0 group-hover:opacity-100'
+                  }`}
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                </button>
                 <a
                   href={doc.fileUrl}
                   target="_blank"
