@@ -15,6 +15,7 @@ import {
   AlertCircle,
   CheckCircle2,
   ArrowLeft,
+  Loader2,
 } from 'lucide-react';
 import { format, differenceInMinutes } from 'date-fns';
 import Link from 'next/link';
@@ -24,7 +25,7 @@ import AuthGuard from '@/components/portal/AuthGuard';
 import PortalSidebar from '@/components/portal/PortalSidebar';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { useAppointments } from '@/lib/hooks/useAppointments';
-import { watchConsultationMessages, updateAppointmentStatus, type ConsultationMessage } from '@/lib/firestore';
+import { watchConsultationMessages, markDoctorJoined, markDoctorLeft, type ConsultationMessage } from '@/lib/firestore';
 import type { Appointment } from '@/lib/types';
 
 export default function ConsultationPage() {
@@ -98,6 +99,7 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [ending, setEnding] = useState(false);
+  const [starting, setStarting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -120,17 +122,34 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
   const duration = appointment.durationMinutes || 30;
   const isWithinJoinWindow = minutesBefore <= 15 && minutesAfter <= (duration + 15);
   const isValidUrl = appointment.meetingUrl?.startsWith('https://meet.jit.si/');
-  const canJoin = isValidUrl &&
-    (appointment.status === 'confirmed' || appointment.status === 'inProgress') &&
-    isWithinJoinWindow;
 
   const isAudio = appointment.consultationType === 'audio';
   const CallIcon = isAudio ? Phone : Video;
   const isSessionEnded = appointment.status === 'completed' || appointment.status === 'rated';
+  const hasDoctorJoined = !!appointment.doctorJoinedAt;
+  const hasDoctorLeft = !!appointment.doctorLeftAt;
+
+  // Doctor can start the meeting if within join window and hasn't started yet
+  const canStartMeeting = !hasDoctorJoined && !isSessionEnded && isWithinJoinWindow &&
+    (appointment.status === 'confirmed' || appointment.status === 'inProgress');
+
+  // Doctor can rejoin if already started and session not ended
+  const canRejoinCall = hasDoctorJoined && !hasDoctorLeft && !isSessionEnded && isValidUrl;
 
   const displayName = appointment.anonymousMode
     ? appointment.anonymousAlias || 'Anonymous Patient'
     : 'Patient';
+
+  const handleStartMeeting = async () => {
+    setStarting(true);
+    try {
+      await markDoctorJoined(userId, appointment.id);
+    } catch (err) {
+      console.error('Failed to start meeting:', err);
+    } finally {
+      setStarting(false);
+    }
+  };
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !specialist) return;
@@ -158,7 +177,7 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
     if (!confirm('Are you sure you want to end this session? This will mark the appointment as completed.')) return;
     setEnding(true);
     try {
-      await updateAppointmentStatus(userId, appointment.id, 'completed');
+      await markDoctorLeft(userId, appointment.id);
     } catch (err) {
       console.error('Failed to end session:', err);
     } finally {
@@ -191,25 +210,49 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
             Session Ended
           </span>
         )}
+        {hasDoctorJoined && !isSessionEnded && (
+          <span className="ml-auto px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-100 text-emerald-700">
+            Meeting Started
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Call + Patient Info */}
         <div className="lg:col-span-1 space-y-4">
-          {/* Join Call Card */}
+          {/* Call Card */}
           <div className={`p-5 rounded-2xl border ${
-            canJoin
+            canRejoinCall
               ? 'bg-emerald-50 border-emerald-200 ring-1 ring-emerald-200/40'
-              : 'bg-white border-slate-200'
+              : canStartMeeting
+                ? 'bg-violet-50 border-violet-200 ring-1 ring-violet-200/40'
+                : 'bg-white border-slate-200'
           }`}>
             <div className="flex items-center gap-2 mb-3">
-              <CallIcon className={`w-5 h-5 ${canJoin ? 'text-emerald-600' : 'text-slate-400'}`} />
+              <CallIcon className={`w-5 h-5 ${canRejoinCall ? 'text-emerald-600' : canStartMeeting ? 'text-violet-600' : 'text-slate-400'}`} />
               <h3 className="font-semibold text-sm text-slate-800">
                 {isAudio ? 'Audio' : 'Video'} Call
               </h3>
             </div>
 
-            {canJoin ? (
+            {/* Step 1: Start Meeting (sets doctorJoinedAt) */}
+            {canStartMeeting && (
+              <button
+                onClick={handleStartMeeting}
+                disabled={starting}
+                className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-violet-600 text-white font-medium hover:bg-violet-700 transition-colors shadow-sm disabled:opacity-50"
+              >
+                {starting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <CallIcon className="w-4 h-4" />
+                )}
+                {starting ? 'Starting...' : 'Start Meeting'}
+              </button>
+            )}
+
+            {/* Step 2: Join Call (opens Jitsi after doctorJoinedAt is set) */}
+            {canRejoinCall && (
               <a
                 href={appointment.meetingUrl!}
                 target="_blank"
@@ -217,15 +260,21 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
                 className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-emerald-600 text-white font-medium hover:bg-emerald-700 transition-colors shadow-sm"
               >
                 <CallIcon className="w-4 h-4" />
-                Join {isAudio ? 'Audio' : 'Video'} Call
+                {hasDoctorJoined ? 'Join' : 'Rejoin'} {isAudio ? 'Audio' : 'Video'} Call
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
-            ) : isSessionEnded ? (
+            )}
+
+            {/* Session ended */}
+            {isSessionEnded && (
               <div className="flex items-center gap-2 text-sm text-slate-500">
                 <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                 Session completed
               </div>
-            ) : (
+            )}
+
+            {/* Not yet in join window */}
+            {!canStartMeeting && !canRejoinCall && !isSessionEnded && (
               <div className="flex items-center gap-2 text-sm text-amber-600">
                 <AlertCircle className="w-4 h-4" />
                 {minutesBefore > 15
@@ -234,6 +283,7 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
               </div>
             )}
 
+            {/* End Session button */}
             {!isSessionEnded && (appointment.status === 'confirmed' || appointment.status === 'inProgress') && (
               <button
                 onClick={handleEndSession}
