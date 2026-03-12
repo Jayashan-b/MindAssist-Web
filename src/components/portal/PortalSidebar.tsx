@@ -11,6 +11,7 @@ import {
   UserCircle,
   LogOut,
   Stethoscope,
+  Video,
 } from 'lucide-react';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { signOut } from '@/lib/auth';
@@ -19,6 +20,7 @@ const navItems = [
   { href: '/portal/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/portal/slots', label: 'Manage Slots', icon: CalendarClock },
   { href: '/portal/appointments', label: 'Appointments', icon: ClipboardList },
+  { href: '/portal/consultation', label: 'Consultation', icon: Video },
   { href: '/portal/income', label: 'Income', icon: TrendingUp },
   { href: '/portal/profile', label: 'Profile', icon: UserCircle },
 ];
