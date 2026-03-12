@@ -12,6 +12,7 @@ import {
   LogOut,
   Stethoscope,
   Video,
+  Users,
 } from 'lucide-react';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { signOut } from '@/lib/auth';
@@ -20,6 +21,7 @@ const navItems = [
   { href: '/portal/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/portal/slots', label: 'Manage Slots', icon: CalendarClock },
   { href: '/portal/appointments', label: 'Appointments', icon: ClipboardList },
+  { href: '/portal/patients', label: 'Patients', icon: Users },
   { href: '/portal/consultation', label: 'Consultation', icon: Video },
   { href: '/portal/income', label: 'Income', icon: TrendingUp },
   { href: '/portal/profile', label: 'Profile', icon: UserCircle },

@@ -31,6 +31,7 @@ export interface Specialist {
   isOnCall: boolean;
   onCallPriceInCents: number;
   onCallPriceFormatted: string;
+  sessionDurationMinutes: number;
 }
 
 export type AppointmentStatus =
@@ -66,6 +67,11 @@ export interface Appointment {
   doctorJoinedAt: string | null;
   doctorLeftAt: string | null;
   sessionStartedAt: string | null;
+  patientName: string | null;
+  patientEmail: string | null;
+  cancelledAt: string | null;
+  cancelledBy: 'patient' | 'doctor' | null;
+  cancellationReason: string | null;
 }
 
 export const SPECIALTIES = ['Psychiatrist', 'Psychologist', 'Counsellor'] as const;
@@ -164,3 +170,60 @@ export const APPOINTMENT_STATUS_COLORS: Record<AppointmentStatus, string> = {
   cancelled: 'bg-red-100 text-red-800',
   rated: 'bg-violet-100 text-violet-800',
 };
+
+// ── Session configuration ────────────────────────────────────────
+export const SESSION_DURATIONS = [15, 30, 45, 60] as const;
+export type SessionDuration = (typeof SESSION_DURATIONS)[number];
+export const JOIN_WINDOW_MINUTES = 15;
+
+// ── Patient notes & documents ────────────────────────────────────
+export interface PatientNote {
+  id: string;
+  patientUserId: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+  appointmentId: string | null;
+  tags: string[];
+}
+
+export interface PatientDocument {
+  id: string;
+  patientUserId: string;
+  fileName: string;
+  fileUrl: string;
+  fileType: string;
+  fileSizeBytes: number;
+  uploadedAt: string;
+  description: string | null;
+  appointmentId: string | null;
+}
+
+export interface PatientProfile {
+  userId: string;
+  displayName: string;
+  email: string | null;
+  isAnonymous: boolean;
+  totalSessions: number;
+  completedSessions: number;
+  cancelledSessions: number;
+  firstVisit: string;
+  lastVisit: string;
+  averageRating: number | null;
+  appointments: Appointment[];
+  notes: PatientNote[];
+  documents: PatientDocument[];
+}
+
+export const NOTE_TAGS = [
+  'Anxiety',
+  'Depression',
+  'Follow-up',
+  'Medication',
+  'Assessment',
+  'Progress',
+  'Crisis',
+  'Trauma',
+  'CBT',
+  'Referral',
+] as const;

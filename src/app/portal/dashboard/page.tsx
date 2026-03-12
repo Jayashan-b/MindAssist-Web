@@ -16,8 +16,10 @@ import AuthGuard from '@/components/portal/AuthGuard';
 import PortalSidebar from '@/components/portal/PortalSidebar';
 import StatCard from '@/components/portal/StatCard';
 import AppointmentCard from '@/components/portal/AppointmentCard';
+import SessionNotificationBanner from '@/components/portal/SessionNotificationBanner';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { useAppointments } from '@/lib/hooks/useAppointments';
+import { useSessionNotifications } from '@/lib/hooks/useSessionNotifications';
 
 export default function DashboardPage() {
   return (
@@ -29,7 +31,8 @@ export default function DashboardPage() {
 
 function DashboardContent() {
   const { specialist } = useAuth();
-  const { appointments, upcoming, completed, paid, loading } = useAppointments(specialist?.id);
+  const { appointments, upcoming, completed, paid, uniquePatientCount, loading } = useAppointments(specialist?.id);
+  const { approachingSessions } = useSessionNotifications(appointments);
 
   const [now, setNow] = useState(new Date());
   useEffect(() => {
@@ -74,6 +77,9 @@ function DashboardContent() {
               Here&apos;s an overview of your practice
             </p>
           </div>
+
+          {/* Session Notifications */}
+          <SessionNotificationBanner sessions={approachingSessions} />
 
           {/* Stats Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

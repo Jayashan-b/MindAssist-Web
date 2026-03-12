@@ -7,8 +7,9 @@ import AuthGuard from '@/components/portal/AuthGuard';
 import PortalSidebar from '@/components/portal/PortalSidebar';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { updateSpecialist } from '@/lib/firestore';
-import { LANGUAGES, SPECIALIZATIONS, CONSULTATION_TYPES } from '@/lib/types';
+import { LANGUAGES, SPECIALIZATIONS, CONSULTATION_TYPES, type SessionDuration } from '@/lib/types';
 import QualificationComboBox from '@/components/portal/QualificationComboBox';
+import SessionDurationPicker from '@/components/portal/SessionDurationPicker';
 
 export default function ProfilePage() {
   return (
@@ -34,6 +35,7 @@ function ProfileContent() {
   const [qualifications, setQualifications] = useState<string[]>([]);
   const [isOnCall, setIsOnCall] = useState(false);
   const [onCallFee, setOnCallFee] = useState(0);
+  const [sessionDuration, setSessionDuration] = useState<number>(30);
 
   useEffect(() => {
     if (specialist) {
@@ -47,6 +49,7 @@ function ProfileContent() {
       setQualifications(specialist.qualifications);
       setIsOnCall(specialist.isOnCall);
       setOnCallFee(specialist.onCallPriceInCents / 100);
+      setSessionDuration(specialist.sessionDurationMinutes);
     }
   }, [specialist]);
 
@@ -76,6 +79,7 @@ function ProfileContent() {
         isOnCall,
         onCallPriceInCents: isOnCall ? onCallFee * 100 : consultationFee * 100,
         onCallPriceFormatted: isOnCall ? `LKR ${onCallFee.toLocaleString()}` : `LKR ${consultationFee.toLocaleString()}`,
+        sessionDurationMinutes: sessionDuration,
       });
       await refreshSpecialist();
       setSaved(true);
@@ -296,6 +300,14 @@ function ProfileContent() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Session Duration */}
+            <div className="pb-4 border-b border-slate-100">
+              <SessionDurationPicker
+                value={sessionDuration}
+                onChange={(dur) => setSessionDuration(dur)}
+              />
             </div>
 
             {/* Consultation Types */}
