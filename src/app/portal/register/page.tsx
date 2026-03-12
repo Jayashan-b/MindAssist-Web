@@ -19,6 +19,7 @@ import { createSpecialist } from '@/lib/firestore';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { SPECIALTIES, LANGUAGES, SPECIALIZATIONS, CONSULTATION_TYPES } from '@/lib/types';
 import type { Specialist } from '@/lib/types';
+import { sanitizeInput, sanitizeArray } from '@/lib/utils';
 
 const STEPS = [
   { title: 'Personal Info', icon: User },
@@ -108,20 +109,27 @@ export default function RegisterPage() {
     const priceInCents = consultationFee * 100;
     const specialistId = `specialist_${Date.now()}`;
 
+    // Sanitize all user inputs before persisting
+    const safeName = sanitizeInput(name, 100);
+    const safeRegNum = sanitizeInput(registrationNumber, 20);
+    const safeBio = sanitizeInput(bio, 1000);
+    const safeClinic = sanitizeInput(clinicAddress, 300);
+    const safeQualifications = sanitizeArray(qualifications, 200);
+
     const specialistData: Omit<Specialist, 'id'> = {
       authUid: auth.currentUser.uid,
       email: auth.currentUser.email || email,
-      registrationNumber,
-      name,
+      registrationNumber: safeRegNum,
+      name: safeName,
       specialty,
       photoUrl: auth.currentUser.photoURL || null,
       languages: selectedLanguages,
       priceFormatted: `LKR ${consultationFee.toLocaleString()}`,
       priceInCents,
       isAvailable: true,
-      bio: bio || null,
-      qualifications: qualifications.filter((q) => q.trim()),
-      clinicAddress: clinicAddress || null,
+      bio: safeBio || null,
+      qualifications: safeQualifications,
+      clinicAddress: safeClinic || null,
       gender,
       specializations: selectedSpecializations,
       isVerified: false,
