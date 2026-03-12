@@ -28,6 +28,7 @@ export interface Specialist {
   consultationTypes: string[];
   availableSlots: Record<string, string[]> | null;
   reviews: Review[];
+  isOnCall: boolean;
 }
 
 export type AppointmentStatus =
