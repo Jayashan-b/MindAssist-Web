@@ -17,7 +17,7 @@ import {
 import { auth } from '@/lib/firebase';
 import { createSpecialist } from '@/lib/firestore';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { SPECIALTIES, LANGUAGES, SPECIALIZATIONS, CONSULTATION_TYPES } from '@/lib/types';
+import { SPECIALTIES, LANGUAGES, SPECIALIZATIONS, CONSULTATION_TYPES, isValidSlmcNumber } from '@/lib/types';
 import type { Specialist } from '@/lib/types';
 import { sanitizeInput, sanitizeArray } from '@/lib/utils';
 
@@ -84,9 +84,13 @@ export default function RegisterPage() {
     setQualifications(updated);
   };
 
+  const slmcError = registrationNumber.trim() && !isValidSlmcNumber(registrationNumber)
+    ? 'Invalid format. Use SLMC-12345, SLMC/12345, or a 4-6 digit number.'
+    : null;
+
   const canProceed = () => {
     if (step === 0) {
-      return name.trim() && registrationNumber.trim() && specialty;
+      return name.trim() && registrationNumber.trim() && !slmcError && specialty;
     }
     if (step === 1) {
       return (
@@ -257,9 +261,16 @@ export default function RegisterPage() {
                       type="text"
                       value={registrationNumber}
                       onChange={(e) => setRegistrationNumber(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50/80 border border-slate-200 rounded-xl text-slate-900 focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 outline-none transition-all"
+                      className={`w-full px-4 py-3 bg-slate-50/80 border rounded-xl text-slate-900 focus:ring-2 outline-none transition-all ${
+                        slmcError
+                          ? 'border-red-300 focus:ring-red-500/30 focus:border-red-400'
+                          : 'border-slate-200 focus:ring-violet-500/30 focus:border-violet-400'
+                      }`}
                       placeholder="e.g. SLMC-12345"
                     />
+                    {slmcError && (
+                      <p className="text-xs text-red-500 mt-1">{slmcError}</p>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
