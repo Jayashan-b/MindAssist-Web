@@ -7,8 +7,6 @@ import {
   Stethoscope,
   ChevronRight,
   ChevronLeft,
-  Plus,
-  X,
   Check,
   User,
   GraduationCap,
@@ -20,6 +18,7 @@ import { useAuth } from '@/lib/hooks/useAuth';
 import { SPECIALTIES, LANGUAGES, SPECIALIZATIONS, CONSULTATION_TYPES, isValidSlmcNumber } from '@/lib/types';
 import type { Specialist } from '@/lib/types';
 import { sanitizeInput, sanitizeArray } from '@/lib/utils';
+import QualificationComboBox from '@/components/portal/QualificationComboBox';
 
 const STEPS = [
   { title: 'Personal Info', icon: User },
@@ -42,7 +41,7 @@ export default function RegisterPage() {
   const [gender, setGender] = useState<string>('Male');
 
   // Step 2: Qualifications
-  const [qualifications, setQualifications] = useState<string[]>(['']);
+  const [qualifications, setQualifications] = useState<string[]>([]);
   const [experienceYears, setExperienceYears] = useState<number>(1);
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>(['English']);
   const [selectedSpecializations, setSelectedSpecializations] = useState<string[]>([]);
@@ -75,15 +74,6 @@ export default function RegisterPage() {
     }
   };
 
-  const addQualification = () => setQualifications([...qualifications, '']);
-  const removeQualification = (index: number) =>
-    setQualifications(qualifications.filter((_, i) => i !== index));
-  const updateQualification = (index: number, value: string) => {
-    const updated = [...qualifications];
-    updated[index] = value;
-    setQualifications(updated);
-  };
-
   const slmcError = registrationNumber.trim() && !isValidSlmcNumber(registrationNumber)
     ? 'Invalid format. Use SLMC-12345, SLMC/12345, or a 4-6 digit number.'
     : null;
@@ -94,7 +84,7 @@ export default function RegisterPage() {
     }
     if (step === 1) {
       return (
-        qualifications.some((q) => q.trim()) &&
+        qualifications.length > 0 &&
         selectedLanguages.length > 0 &&
         selectedSpecializations.length > 0
       );
@@ -302,36 +292,10 @@ export default function RegisterPage() {
 
               {step === 1 && (
                 <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      Qualifications
-                    </label>
-                    {qualifications.map((q, i) => (
-                      <div key={i} className="flex gap-2 mb-2">
-                        <input
-                          type="text"
-                          value={q}
-                          onChange={(e) => updateQualification(i, e.target.value)}
-                          className="flex-1 px-4 py-2.5 bg-slate-50/80 border border-slate-200 rounded-xl text-slate-900 text-sm focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 outline-none transition-all"
-                          placeholder="e.g. MBBS, MD Psychiatry"
-                        />
-                        {qualifications.length > 1 && (
-                          <button
-                            onClick={() => removeQualification(i)}
-                            className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    <button
-                      onClick={addQualification}
-                      className="flex items-center gap-1 text-sm text-violet-600 hover:text-violet-700 font-medium mt-1"
-                    >
-                      <Plus className="w-4 h-4" /> Add qualification
-                    </button>
-                  </div>
+                  <QualificationComboBox
+                    value={qualifications}
+                    onChange={setQualifications}
+                  />
 
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">

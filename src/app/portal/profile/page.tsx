@@ -8,6 +8,7 @@ import PortalSidebar from '@/components/portal/PortalSidebar';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { updateSpecialist } from '@/lib/firestore';
 import { LANGUAGES, SPECIALIZATIONS, CONSULTATION_TYPES } from '@/lib/types';
+import QualificationComboBox from '@/components/portal/QualificationComboBox';
 
 export default function ProfilePage() {
   return (
@@ -183,23 +184,10 @@ function ProfileContent() {
             </div>
 
             {/* Qualifications */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Qualifications</label>
-              {qualifications.map((q, i) => (
-                <div key={i} className="flex gap-2 mb-2">
-                  <input
-                    type="text"
-                    value={q}
-                    onChange={(e) => {
-                      const updated = [...qualifications];
-                      updated[i] = e.target.value;
-                      setQualifications(updated);
-                    }}
-                    className="flex-1 px-4 py-2.5 bg-slate-50/80 border border-slate-200 rounded-xl text-slate-900 text-sm focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 outline-none transition-all"
-                  />
-                </div>
-              ))}
-            </div>
+            <QualificationComboBox
+              value={qualifications}
+              onChange={setQualifications}
+            />
 
             {/* Clinic Address */}
             <div>

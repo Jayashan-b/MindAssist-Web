@@ -81,6 +81,25 @@ export const SPECIALIZATIONS = [
   'Family Therapy',
 ] as const;
 
+export const COMMON_QUALIFICATIONS = [
+  'MBBS',
+  'MD',
+  'MD Psychiatry',
+  'MPhil',
+  'PhD',
+  'Diploma in Psychiatry',
+  'DCH',
+  'MRCP',
+  'FRCP',
+  'MSc Clinical Psychology',
+  'PgDip Counselling',
+  'BA Psychology',
+  'MA Psychology',
+  'Board Certified Psychiatrist',
+  'Licensed Clinical Psychologist',
+  'Registered Counsellor',
+] as const;
+
 export const CONSULTATION_TYPES = ['video', 'audio'] as const;
 
 // SLMC Registration Number format validation
