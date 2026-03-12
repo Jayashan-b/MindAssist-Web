@@ -200,6 +200,9 @@ export interface PatientDocument {
 }
 
 export interface PatientProfile {
+  /** Unique key for lists/React keys. For anonymous sessions equals `anon:{appointmentId}`. */
+  profileKey: string;
+  /** Real Firestore userId — used for loading notes & documents. */
   userId: string;
   displayName: string;
   email: string | null;

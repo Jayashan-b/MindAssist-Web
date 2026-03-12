@@ -132,7 +132,7 @@ function PatientsContent() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredPatients.map((patient) => (
                 <button
-                  key={patient.userId}
+                  key={patient.profileKey}
                   onClick={() => setSelectedPatient(patient)}
                   className="bg-white rounded-2xl border border-slate-200/60 p-5 text-left hover:border-violet-200 hover:shadow-sm transition-all group"
                 >

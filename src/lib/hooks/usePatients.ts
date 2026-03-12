@@ -2,53 +2,56 @@
 
 import { useMemo } from 'react';
 import type { Appointment, PatientProfile } from '../types';
+import { generateAnonName } from '../utils/anonName';
 
 /**
- * Aggregates appointments into PatientProfile objects grouped by userId.
- * Notes and documents are loaded on-demand (not here).
+ * Builds PatientProfile objects from a list of appointments.
  *
- * Privacy rule: if ANY appointment for a user has anonymousMode=true,
- * the entire patient profile is treated as anonymous — no real name or
- * email is ever surfaced to the specialist, even if other sessions from
- * the same user were non-anonymous.
+ * Grouping rules:
+ *  - Non-anonymous appointments → grouped by userId (same person, multiple sessions)
+ *  - Anonymous appointments     → each appointment is its own independent patient
+ *    (privacy: the doctor should not be able to link anonymous sessions to each other
+ *     or to the user's real identity, even if the same userId booked both)
+ *
+ * Naming rules:
+ *  - Non-anonymous: use patientName from appointment data
+ *  - Anonymous: deterministic two-word hacker/gamer name derived from appointmentId
+ *    (same name always shows for the same session; e.g. "Cyber Raven", "Silent Fox")
  */
 export function usePatients(appointments: Appointment[]) {
   const patients = useMemo(() => {
-    const map: Record<string, Appointment[]> = {};
+    // Map from profileKey → { profileKey, userId, apts[] }
+    const map: Record<string, { profileKey: string; userId: string; apts: Appointment[] }> = {};
+
     for (const apt of appointments) {
-      if (!map[apt.userId]) {
-        map[apt.userId] = [];
+      if (apt.anonymousMode) {
+        // Each anonymous session = independent patient entry
+        const profileKey = `anon:${apt.id}`;
+        map[profileKey] = { profileKey, userId: apt.userId, apts: [apt] };
+      } else {
+        // Non-anonymous: group all sessions from same user together
+        const profileKey = apt.userId;
+        if (!map[profileKey]) {
+          map[profileKey] = { profileKey, userId: apt.userId, apts: [] };
+        }
+        map[profileKey].apts.push(apt);
       }
-      map[apt.userId].push(apt);
     }
 
-    const profiles: PatientProfile[] = Object.entries(map).map(([userId, apts]) => {
-      // Sort by scheduled date ascending to get first/last visit
+    const profiles: PatientProfile[] = Object.values(map).map(({ profileKey, userId, apts }) => {
       const sorted = [...apts].sort(
         (a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime(),
       );
 
-      // Privacy: if ANY appointment is anonymous, treat the whole profile as anonymous
-      const hasAnyAnonymous = apts.some((a) => a.anonymousMode);
+      const isAnon = apts[0].anonymousMode;
 
-      let displayName: string;
-      let email: string | null;
-      let isAnonymous: boolean;
+      const displayName = isAnon
+        ? generateAnonName(apts[0].id)   // deterministic cool name from appointment ID
+        : apts.find((a) => a.patientName)?.patientName ?? 'Patient';
 
-      if (hasAnyAnonymous) {
-        // Use the alias from the most recent anonymous appointment
-        const latestAnon = [...apts]
-          .filter((a) => a.anonymousMode && a.anonymousAlias)
-          .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime())[0];
-        displayName = latestAnon?.anonymousAlias || 'Anonymous';
-        email = null;
-        isAnonymous = true;
-      } else {
-        const withName = apts.find((a) => a.patientName);
-        displayName = withName?.patientName || 'Patient';
-        email = withName?.patientEmail || null;
-        isAnonymous = false;
-      }
+      const email = isAnon
+        ? null
+        : apts.find((a) => a.patientEmail)?.patientEmail ?? null;
 
       const completedSessions = apts.filter(
         (a) => a.status === 'completed' || a.status === 'rated',
@@ -61,10 +64,11 @@ export function usePatients(appointments: Appointment[]) {
         : null;
 
       return {
+        profileKey,
         userId,
         displayName,
         email,
-        isAnonymous,
+        isAnonymous: isAnon,
         totalSessions: apts.length,
         completedSessions,
         cancelledSessions,
@@ -77,15 +81,14 @@ export function usePatients(appointments: Appointment[]) {
       };
     });
 
-    // Sort by last visit descending (most recent first)
+    // Most recent visit first
     return profiles.sort(
       (a, b) => new Date(b.lastVisit).getTime() - new Date(a.lastVisit).getTime(),
     );
   }, [appointments]);
 
-  const getPatient = (userId: string): PatientProfile | undefined => {
-    return patients.find((p) => p.userId === userId);
-  };
+  const getPatient = (profileKey: string): PatientProfile | undefined =>
+    patients.find((p) => p.profileKey === profileKey);
 
   return { patients, getPatient };
 }
