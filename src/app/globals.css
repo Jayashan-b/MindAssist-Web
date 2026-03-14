@@ -15,3 +15,14 @@ body {
   color: rgb(var(--foreground));
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* LiveKit chat panel overflow fix — prevent horizontal scroll when chat opens */
+.lk-video-conference {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.lk-chat {
+  max-width: 300px;
+  flex-shrink: 1;
+}
