@@ -72,6 +72,10 @@ export interface Appointment {
   cancelledAt: string | null;
   cancelledBy: 'patient' | 'doctor' | null;
   cancellationReason: string | null;
+  // E2EE negotiation
+  doctorE2eeCapable?: boolean;
+  patientE2eeCapable?: boolean;
+  sessionE2ee?: boolean;
 }
 
 export const SPECIALTIES = ['Psychiatrist', 'Psychologist', 'Counsellor'] as const;
