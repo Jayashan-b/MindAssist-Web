@@ -2,9 +2,10 @@
 
 import { LiveKitRoom, VideoConference } from '@livekit/components-react';
 import '@livekit/components-styles';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase';
+import { Room } from 'livekit-client';
 
 interface LiveKitCallProps {
   roomName: string;
@@ -21,7 +22,27 @@ export default function LiveKitCall({
 }: LiveKitCallProps) {
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const roomRef = useRef<Room | null>(null);
+  const [roomReady, setRoomReady] = useState(false);
 
+  // Create Room instance ONCE (E2EE disabled — Flutter macOS doesn't support
+  // it, causing an encryption mismatch where web encrypts but Flutter can't
+  // decrypt, resulting in black video and no audio).
+  useEffect(() => {
+    roomRef.current = new Room({
+      adaptiveStream: true,
+      dynacast: true,
+    });
+    setRoomReady(true);
+
+    return () => {
+      roomRef.current?.disconnect();
+      roomRef.current = null;
+      setRoomReady(false);
+    };
+  }, [roomName]);
+
+  // Fetch token
   useEffect(() => {
     const fetchToken = async () => {
       try {
@@ -53,7 +74,7 @@ export default function LiveKitCall({
     );
   }
 
-  if (!token) {
+  if (!token || !roomReady) {
     return (
       <div className="flex items-center justify-center h-full bg-gray-900 rounded-xl">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
@@ -67,6 +88,7 @@ export default function LiveKitCall({
       <LiveKitRoom
         serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
         token={token}
+        room={roomRef.current ?? undefined}
         connect={true}
         video={!isAudio}
         audio={true}
