@@ -21,9 +21,10 @@ export function sanitizeArray(values: string[], maxLength: number = 200): string
 }
 
 /**
- * Validate that a URL is a safe Jitsi meeting URL.
+ * Validate that a meeting identifier is a valid LiveKit room name
+ * or a legacy Jitsi meeting URL.
  */
-export function isValidMeetingUrl(url: string | null | undefined): boolean {
-  if (!url) return false;
-  return url.startsWith('https://meet.jit.si/');
+export function isValidMeetingRoom(roomOrUrl: string | null | undefined): boolean {
+  if (!roomOrUrl) return false;
+  return roomOrUrl.startsWith('consultation-') || roomOrUrl.startsWith('https://meet.jit.si/');
 }

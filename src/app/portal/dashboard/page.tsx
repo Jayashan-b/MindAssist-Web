@@ -43,7 +43,7 @@ function DashboardContent() {
   // Active calls: appointments within the join window (±15 min of scheduled time)
   const activeCalls = appointments.filter((a) => {
     if (a.status !== 'confirmed' && a.status !== 'inProgress') return false;
-    if (!a.meetingUrl?.startsWith('https://meet.jit.si/')) return false;
+    if (!a.meetingUrl?.startsWith('consultation-') && !a.meetingUrl?.startsWith('https://meet.jit.si/')) return false;
     const scheduled = new Date(a.scheduledAt);
     const minBefore = differenceInMinutes(scheduled, now);
     const minAfter = differenceInMinutes(now, scheduled);

@@ -26,6 +26,7 @@ import PortalSidebar from '@/components/portal/PortalSidebar';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { useAppointments } from '@/lib/hooks/useAppointments';
 import { watchConsultationMessages, markDoctorJoined, markDoctorLeft, type ConsultationMessage } from '@/lib/firestore';
+import LiveKitCall from '@/components/portal/LiveKitCall';
 import type { Appointment } from '@/lib/types';
 
 export default function ConsultationPage() {
@@ -121,7 +122,8 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
   const minutesAfter = differenceInMinutes(now, scheduledDate);
   const duration = appointment.durationMinutes || 30;
   const isWithinJoinWindow = minutesBefore <= 15 && minutesAfter <= (duration + 15);
-  const isValidUrl = appointment.meetingUrl?.startsWith('https://meet.jit.si/');
+  const isValidRoom = appointment.meetingUrl?.startsWith('consultation-') || appointment.meetingUrl?.startsWith('https://meet.jit.si/');
+  const isLegacyJitsi = appointment.meetingUrl?.startsWith('https://meet.jit.si/');
 
   const isAudio = appointment.consultationType === 'audio';
   const CallIcon = isAudio ? Phone : Video;
@@ -134,7 +136,9 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
     (appointment.status === 'confirmed' || appointment.status === 'inProgress');
 
   // Doctor can rejoin if already started and session not ended
-  const canRejoinCall = hasDoctorJoined && !hasDoctorLeft && !isSessionEnded && isValidUrl;
+  const canRejoinCall = hasDoctorJoined && !hasDoctorLeft && !isSessionEnded && isValidRoom;
+
+  const [showCall, setShowCall] = useState(false);
 
   const displayName = appointment.anonymousMode
     ? appointment.anonymousAlias || 'Anonymous Patient'
@@ -144,6 +148,9 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
     setStarting(true);
     try {
       await markDoctorJoined(userId, appointment.id);
+      if (!isLegacyJitsi) {
+        setShowCall(true);
+      }
     } catch (err) {
       console.error('Failed to start meeting:', err);
     } finally {
@@ -217,6 +224,18 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
         )}
       </div>
 
+      {/* Embedded LiveKit Call */}
+      {showCall && !isLegacyJitsi && appointment.meetingUrl && specialist && (
+        <div className="mb-6 rounded-2xl overflow-hidden border border-slate-200" style={{ height: '500px' }}>
+          <LiveKitCall
+            roomName={appointment.meetingUrl}
+            participantName={specialist.name}
+            isAudio={isAudio}
+            onDisconnected={() => setShowCall(false)}
+          />
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Call + Patient Info */}
         <div className="lg:col-span-1 space-y-4">
@@ -251,18 +270,28 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
               </button>
             )}
 
-            {/* Step 2: Join Call (opens Jitsi after doctorJoinedAt is set) */}
-            {canRejoinCall && (
-              <a
-                href={appointment.meetingUrl!}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-emerald-600 text-white font-medium hover:bg-emerald-700 transition-colors shadow-sm"
-              >
-                <CallIcon className="w-4 h-4" />
-                {hasDoctorJoined ? 'Join' : 'Rejoin'} {isAudio ? 'Audio' : 'Video'} Call
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
+            {/* Step 2: Join/Rejoin Call */}
+            {canRejoinCall && !showCall && (
+              isLegacyJitsi ? (
+                <a
+                  href={appointment.meetingUrl!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-emerald-600 text-white font-medium hover:bg-emerald-700 transition-colors shadow-sm"
+                >
+                  <CallIcon className="w-4 h-4" />
+                  {hasDoctorJoined ? 'Join' : 'Rejoin'} {isAudio ? 'Audio' : 'Video'} Call
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              ) : (
+                <button
+                  onClick={() => setShowCall(true)}
+                  className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-emerald-600 text-white font-medium hover:bg-emerald-700 transition-colors shadow-sm"
+                >
+                  <CallIcon className="w-4 h-4" />
+                  {hasDoctorJoined ? 'Join' : 'Rejoin'} {isAudio ? 'Audio' : 'Video'} Call
+                </button>
+              )
             )}
 
             {/* Session ended */}

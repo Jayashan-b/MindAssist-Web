@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Video, Phone, Calendar, Clock, ExternalLink, AlertCircle, CheckCircle2, Loader2, XCircle, Ban } from 'lucide-react';
+import { Video, Phone, Calendar, Clock, AlertCircle, CheckCircle2, Loader2, XCircle, Ban } from 'lucide-react';
 import { format, differenceInMinutes } from 'date-fns';
 import Link from 'next/link';
 import type { Appointment } from '@/lib/types';
@@ -46,8 +46,8 @@ export default function AppointmentCard({ appointment, showJoinLink = true, onVi
   const canStartMeeting = !hasDoctorJoined && !isSessionEnded && isWithinJoinWindow &&
     (appointment.status === 'confirmed' || appointment.status === 'inProgress');
 
-  const isValidUrl = appointment.meetingUrl?.startsWith('https://meet.jit.si/');
-  const canRejoinCall = hasDoctorJoined && !hasDoctorLeft && !isSessionEnded && isValidUrl;
+  const isValidRoom = appointment.meetingUrl?.startsWith('consultation-') || appointment.meetingUrl?.startsWith('https://meet.jit.si/');
+  const canRejoinCall = hasDoctorJoined && !hasDoctorLeft && !isSessionEnded && isValidRoom;
 
   const isApproaching = minutesBefore > 0 && minutesBefore <= 60 && !isWithinJoinWindow &&
     (appointment.status === 'confirmed' || appointment.status === 'inProgress');
@@ -187,21 +187,12 @@ export default function AppointmentCard({ appointment, showJoinLink = true, onVi
         {/* Rejoin Call */}
         {canRejoinCall && showJoinLink && (
           <div className="mt-3 pt-3 border-t border-emerald-100 flex items-center gap-3">
-            <a
-              href={appointment.meetingUrl!}
-              target="_blank"
-              rel="noopener noreferrer"
+            <Link
+              href={`/portal/consultation?appointmentId=${appointment.id}&userId=${appointment.userId}`}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition-colors shadow-sm"
             >
               <CallIcon className="w-4 h-4" />
               Rejoin {isAudio ? 'Audio' : 'Video'} Call
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-            <Link
-              href={`/portal/consultation?appointmentId=${appointment.id}&userId=${appointment.userId}`}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-100 text-violet-700 text-sm font-medium hover:bg-violet-200 transition-colors"
-            >
-              Open Console
             </Link>
           </div>
         )}
