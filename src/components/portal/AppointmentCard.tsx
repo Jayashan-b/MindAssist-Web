@@ -7,6 +7,7 @@ import Link from 'next/link';
 import type { Appointment } from '@/lib/types';
 import { APPOINTMENT_STATUS_LABELS, APPOINTMENT_STATUS_COLORS, JOIN_WINDOW_MINUTES } from '@/lib/types';
 import { markDoctorJoined } from '@/lib/firestore';
+import { supportsE2EE } from '@/lib/e2ee';
 import PatientAvatar from './PatientAvatar';
 import CancelAppointmentDialog from './CancelAppointmentDialog';
 
@@ -60,7 +61,7 @@ export default function AppointmentCard({ appointment, showJoinLink = true, onVi
   const handleStartMeeting = async () => {
     setStarting(true);
     try {
-      await markDoctorJoined(appointment.userId, appointment.id);
+      await markDoctorJoined(appointment.userId, appointment.id, supportsE2EE());
     } catch (err) {
       console.error('Failed to start meeting:', err);
     } finally {

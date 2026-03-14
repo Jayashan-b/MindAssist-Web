@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
@@ -16,17 +16,20 @@ import {
   CheckCircle2,
   ArrowLeft,
   Loader2,
+  Shield,
 } from 'lucide-react';
 import { format, differenceInMinutes } from 'date-fns';
 import Link from 'next/link';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { collection, addDoc, serverTimestamp, doc, onSnapshot } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '@/lib/firebase';
 import AuthGuard from '@/components/portal/AuthGuard';
 import PortalSidebar from '@/components/portal/PortalSidebar';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { useAppointments } from '@/lib/hooks/useAppointments';
 import { watchConsultationMessages, markDoctorJoined, markDoctorLeft, type ConsultationMessage } from '@/lib/firestore';
 import LiveKitCall from '@/components/portal/LiveKitCall';
+import { supportsE2EE } from '@/lib/e2ee';
 import type { Appointment } from '@/lib/types';
 
 export default function ConsultationPage() {
@@ -140,17 +143,80 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
 
   const [showCall, setShowCall] = useState(false);
 
+  // E2EE negotiation state
+  const [callToken, setCallToken] = useState<string | null>(null);
+  const [e2eeKey, setE2eeKey] = useState<string | null>(null);
+  const [sessionE2ee, setSessionE2ee] = useState(false);
+  const [e2eeResolved, setE2eeResolved] = useState(false);
+  // Tracks whether doctor manually left the call (prevents auto-rejoin)
+  const [manuallyLeft, setManuallyLeft] = useState(false);
+
+  // Doctor is waiting for patient when: meeting started but E2EE not yet resolved
+  // This covers both fresh start and page refresh after starting
+  const isPatientE2eeResolved = appointment.sessionE2ee !== undefined && appointment.sessionE2ee !== null;
+  const waitingForPatient = hasDoctorJoined && !hasDoctorLeft && !isSessionEnded && !isLegacyJitsi && !showCall && !isPatientE2eeResolved;
+
   const displayName = appointment.anonymousMode
     ? appointment.anonymousAlias || 'Anonymous Patient'
     : 'Patient';
 
+  // Fetch token with E2EE config from Cloud Function
+  const fetchTokenWithE2EE = useCallback(async (useE2EE: boolean) => {
+    if (!specialist || !appointment.meetingUrl) return;
+    try {
+      const getToken = httpsCallable(functions, 'getLivekitToken');
+      const result = await getToken({
+        roomName: appointment.meetingUrl,
+        participantName: specialist.name,
+        role: 'doctor',
+        e2eeEnabled: useE2EE,
+      });
+      const data = result.data as { token: string; e2eeKey?: string };
+      setCallToken(data.token);
+      setE2eeKey(data.e2eeKey ?? null);
+      setSessionE2ee(useE2EE);
+      setShowCall(true);
+    } catch (err) {
+      console.error('Failed to fetch call token:', err);
+    }
+  }, [specialist, appointment.meetingUrl]);
+
+  // Listen for patient's E2EE capability (sessionE2ee field) after doctor starts meeting
+  useEffect(() => {
+    if (!waitingForPatient && !canRejoinCall) return;
+    if (isLegacyJitsi) return;
+    // Don't auto-connect if doctor manually left the call
+    if (manuallyLeft) return;
+
+    // If sessionE2ee is already resolved (rejoin case), use it immediately
+    if (appointment.sessionE2ee !== undefined && appointment.sessionE2ee !== null) {
+      if (!e2eeResolved) {
+        setE2eeResolved(true);
+        fetchTokenWithE2EE(appointment.sessionE2ee);
+      }
+      return;
+    }
+
+    // Listen for changes on the appointment document
+    const unsub = onSnapshot(
+      doc(db, 'users', userId, 'appointments', appointment.id),
+      (snap) => {
+        const data = snap.data();
+        if (data?.sessionE2ee !== undefined && data?.sessionE2ee !== null) {
+          setE2eeResolved(true);
+          fetchTokenWithE2EE(data.sessionE2ee as boolean);
+        }
+      },
+    );
+    return unsub;
+  }, [waitingForPatient, canRejoinCall, isLegacyJitsi, appointment.sessionE2ee, appointment.id, userId, e2eeResolved, manuallyLeft, fetchTokenWithE2EE]);
+
   const handleStartMeeting = async () => {
     setStarting(true);
     try {
-      await markDoctorJoined(userId, appointment.id);
-      if (!isLegacyJitsi) {
-        setShowCall(true);
-      }
+      await markDoctorJoined(userId, appointment.id, supportsE2EE());
+      // doctorJoinedAt is now set → waitingForPatient becomes true (derived)
+      // The useEffect listener will pick up sessionE2ee when patient writes it
     } catch (err) {
       console.error('Failed to start meeting:', err);
     } finally {
@@ -218,20 +284,35 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
           </span>
         )}
         {hasDoctorJoined && !isSessionEnded && (
-          <span className="ml-auto px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-100 text-emerald-700">
-            Meeting Started
+          <span className={`ml-auto px-3 py-1 rounded-lg text-xs font-semibold ${
+            waitingForPatient
+              ? 'bg-amber-100 text-amber-700'
+              : showCall
+                ? 'bg-emerald-100 text-emerald-700'
+                : 'bg-violet-100 text-violet-700'
+          }`}>
+            {waitingForPatient ? 'Waiting for Patient' : showCall ? 'In Call' : 'Meeting Ready'}
           </span>
         )}
       </div>
 
       {/* Embedded LiveKit Call */}
-      {showCall && !isLegacyJitsi && appointment.meetingUrl && specialist && (
-        <div className="mb-6 rounded-2xl overflow-hidden border border-slate-200" style={{ height: '500px' }}>
+      {showCall && !isLegacyJitsi && appointment.meetingUrl && specialist && callToken && (
+        <div className="mb-6 rounded-2xl overflow-hidden border border-slate-200 relative" style={{ height: '500px' }}>
+          {sessionE2ee && (
+            <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-600/90 text-white text-xs font-medium backdrop-blur-sm">
+              <Shield className="w-3.5 h-3.5" />
+              End-to-End Encrypted
+            </div>
+          )}
           <LiveKitCall
             roomName={appointment.meetingUrl}
             participantName={specialist.name}
             isAudio={isAudio}
-            onDisconnected={() => setShowCall(false)}
+            onDisconnected={() => { setShowCall(false); setManuallyLeft(true); }}
+            token={callToken}
+            e2eeEnabled={sessionE2ee}
+            e2eeKey={e2eeKey ?? undefined}
           />
         </div>
       )}
@@ -241,14 +322,16 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
         <div className="lg:col-span-1 space-y-4">
           {/* Call Card */}
           <div className={`p-5 rounded-2xl border ${
-            canRejoinCall
-              ? 'bg-emerald-50 border-emerald-200 ring-1 ring-emerald-200/40'
-              : canStartMeeting
-                ? 'bg-violet-50 border-violet-200 ring-1 ring-violet-200/40'
-                : 'bg-white border-slate-200'
+            waitingForPatient
+              ? 'bg-amber-50 border-amber-200 ring-1 ring-amber-200/40'
+              : canRejoinCall
+                ? 'bg-emerald-50 border-emerald-200 ring-1 ring-emerald-200/40'
+                : canStartMeeting
+                  ? 'bg-violet-50 border-violet-200 ring-1 ring-violet-200/40'
+                  : 'bg-white border-slate-200'
           }`}>
             <div className="flex items-center gap-2 mb-3">
-              <CallIcon className={`w-5 h-5 ${canRejoinCall ? 'text-emerald-600' : canStartMeeting ? 'text-violet-600' : 'text-slate-400'}`} />
+              <CallIcon className={`w-5 h-5 ${waitingForPatient ? 'text-amber-600' : canRejoinCall ? 'text-emerald-600' : canStartMeeting ? 'text-violet-600' : 'text-slate-400'}`} />
               <h3 className="font-semibold text-sm text-slate-800">
                 {isAudio ? 'Audio' : 'Video'} Call
               </h3>
@@ -271,7 +354,16 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
             )}
 
             {/* Step 2: Join/Rejoin Call */}
-            {canRejoinCall && !showCall && (
+            {/* Waiting for patient indicator (inside call card) */}
+            {waitingForPatient && (
+              <div className="flex items-center gap-2 text-sm text-violet-600">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Waiting for patient to join...
+              </div>
+            )}
+
+            {/* Rejoin Call — only when patient has already resolved E2EE and call is not showing */}
+            {canRejoinCall && !showCall && !waitingForPatient && (
               isLegacyJitsi ? (
                 <a
                   href={appointment.meetingUrl!}
@@ -280,16 +372,22 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
                   className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-emerald-600 text-white font-medium hover:bg-emerald-700 transition-colors shadow-sm"
                 >
                   <CallIcon className="w-4 h-4" />
-                  {hasDoctorJoined ? 'Join' : 'Rejoin'} {isAudio ? 'Audio' : 'Video'} Call
+                  Rejoin {isAudio ? 'Audio' : 'Video'} Call
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               ) : (
                 <button
-                  onClick={() => setShowCall(true)}
+                  onClick={() => {
+                    // Patient already resolved E2EE — fetch token and rejoin
+                    if (isPatientE2eeResolved) {
+                      setManuallyLeft(false);
+                      fetchTokenWithE2EE(appointment.sessionE2ee!);
+                    }
+                  }}
                   className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-emerald-600 text-white font-medium hover:bg-emerald-700 transition-colors shadow-sm"
                 >
                   <CallIcon className="w-4 h-4" />
-                  {hasDoctorJoined ? 'Join' : 'Rejoin'} {isAudio ? 'Audio' : 'Video'} Call
+                  Rejoin {isAudio ? 'Audio' : 'Video'} Call
                 </button>
               )
             )}

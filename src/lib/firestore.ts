@@ -125,6 +125,10 @@ function appointmentFromDoc(data: DocumentData, id: string): Appointment {
     cancelledAt: data.cancelledAt ?? null,
     cancelledBy: data.cancelledBy ?? null,
     cancellationReason: data.cancellationReason ?? null,
+    // E2EE negotiation
+    doctorE2eeCapable: data.doctorE2eeCapable ?? undefined,
+    patientE2eeCapable: data.patientE2eeCapable ?? undefined,
+    sessionE2ee: data.sessionE2ee ?? undefined,
   };
 }
 
@@ -160,11 +164,13 @@ export async function updateAppointmentStatus(
 export async function markDoctorJoined(
   userId: string,
   appointmentId: string,
+  e2eeCapable: boolean,
 ): Promise<void> {
   await updateDoc(
     doc(db, 'users', userId, 'appointments', appointmentId),
     {
       doctorJoinedAt: new Date().toISOString(),
+      doctorE2eeCapable: e2eeCapable,
       status: 'inProgress',
     },
   );
