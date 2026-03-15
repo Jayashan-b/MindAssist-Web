@@ -43,12 +43,12 @@ export default function ConsultationPage() {
 function ConsultationContent() {
   const searchParams = useSearchParams();
   const appointmentId = searchParams.get('appointmentId');
-  const userId = searchParams.get('userId');
 
   const { specialist } = useAuth();
   const { appointments, loading: aptsLoading } = useAppointments(specialist?.id);
 
   const appointment = appointments.find((a) => a.id === appointmentId);
+  const userId = appointment?.userId ?? null;
 
   if (aptsLoading) {
     return (

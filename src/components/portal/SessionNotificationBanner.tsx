@@ -44,7 +44,7 @@ export default function SessionNotificationBanner({ sessions }: SessionNotificat
                 </span>
               </div>
               <Link
-                href={`/portal/consultation?appointmentId=${appointment.id}&userId=${appointment.userId}`}
+                href={`/portal/consultation?appointmentId=${appointment.id}`}
                 className="flex items-center gap-1 text-xs font-medium text-amber-700 hover:text-amber-800 transition-colors"
               >
                 Open <ArrowRight className="w-3 h-3" />

@@ -177,7 +177,7 @@ export default function AppointmentCard({ appointment, showJoinLink = true, onVi
               {starting ? 'Starting...' : 'Start Meeting'}
             </button>
             <Link
-              href={`/portal/consultation?appointmentId=${appointment.id}&userId=${appointment.userId}`}
+              href={`/portal/consultation?appointmentId=${appointment.id}`}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-100 text-violet-700 text-sm font-medium hover:bg-violet-200 transition-colors"
             >
               Open Console
@@ -189,7 +189,7 @@ export default function AppointmentCard({ appointment, showJoinLink = true, onVi
         {canRejoinCall && showJoinLink && (
           <div className="mt-3 pt-3 border-t border-emerald-100 flex items-center gap-3">
             <Link
-              href={`/portal/consultation?appointmentId=${appointment.id}&userId=${appointment.userId}`}
+              href={`/portal/consultation?appointmentId=${appointment.id}`}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition-colors shadow-sm"
             >
               <CallIcon className="w-4 h-4" />
