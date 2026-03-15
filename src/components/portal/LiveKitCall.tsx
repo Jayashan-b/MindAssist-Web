@@ -42,6 +42,12 @@ export default function LiveKitCall({
         currentRoom = new Room({
           adaptiveStream: true,
           dynacast: true,
+          videoCaptureDefaults: {
+            resolution: { width: 1920, height: 1080, frameRate: 30 },
+          },
+          publishDefaults: {
+            videoCodec: 'h264',
+          },
           ...(keyProvider && {
             e2ee: {
               keyProvider,
