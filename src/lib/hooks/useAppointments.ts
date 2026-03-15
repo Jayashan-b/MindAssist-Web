@@ -50,7 +50,10 @@ export function useAppointments(specialistId: string | undefined) {
     (a) => a.status === 'inProgress' && !isStaleInProgress(a),
   );
 
-  const paid = appointments.filter((a) => a.paymentStatus === 'success');
+  const paid = appointments.filter((a) =>
+    a.paymentStatus === 'success' &&
+    !(a.status === 'cancelled' && a.refundStatus === 'pending'),
+  );
 
   const today = appointments.filter((a) => {
     const d = new Date(a.scheduledAt);

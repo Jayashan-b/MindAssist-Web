@@ -62,9 +62,9 @@ export default function AppointmentCard({ appointment, showJoinLink = true, onVi
     setStarting(true);
     try {
       await markDoctorJoined(appointment.userId, appointment.id, supportsE2EE());
+      window.location.href = `/portal/consultation?appointmentId=${appointment.id}`;
     } catch (err) {
-      console.error('Failed to start meeting:', err);
-    } finally {
+      console.error('Failed to open room:', err);
       setStarting(false);
     }
   };
@@ -156,12 +156,12 @@ export default function AppointmentCard({ appointment, showJoinLink = true, onVi
           <div className="mt-3 pt-3 border-t border-slate-100">
             <p className="flex items-center gap-2 text-xs text-amber-600 font-medium">
               <AlertCircle className="w-3.5 h-3.5" />
-              Starts in {minutesBefore} minute{minutesBefore !== 1 ? 's' : ''} — join window opens {JOIN_WINDOW_MINUTES} min before
+              Starts in {minutesBefore} minute{minutesBefore !== 1 ? 's' : ''} — join window opens in {minutesBefore - JOIN_WINDOW_MINUTES} min
             </p>
           </div>
         )}
 
-        {/* Start Meeting Button */}
+        {/* Open Room Button */}
         {canStartMeeting && showJoinLink && (
           <div className="mt-3 pt-3 border-t border-violet-100 flex items-center gap-3">
             <button
@@ -174,14 +174,8 @@ export default function AppointmentCard({ appointment, showJoinLink = true, onVi
               ) : (
                 <CallIcon className="w-4 h-4" />
               )}
-              {starting ? 'Starting...' : 'Start Meeting'}
+              {starting ? 'Opening...' : 'Open Room'}
             </button>
-            <Link
-              href={`/portal/consultation?appointmentId=${appointment.id}`}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-100 text-violet-700 text-sm font-medium hover:bg-violet-200 transition-colors"
-            >
-              Open Console
-            </Link>
           </div>
         )}
 

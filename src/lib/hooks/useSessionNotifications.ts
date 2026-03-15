@@ -48,7 +48,7 @@ export function useSessionNotifications(appointments: Appointment[]) {
           ) {
             notifiedRef.current.add(appt.id);
             const name = appt.anonymousMode
-              ? appt.anonymousAlias || 'Anonymous'
+              ? 'Anonymous Patient'
               : appt.patientName || 'Patient';
             new Notification('Session Starting Soon', {
               body: `Your session with ${name} starts in ${mins} minute${mins !== 1 ? 's' : ''}`,

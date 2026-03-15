@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
@@ -10,27 +10,32 @@ import {
   User,
   Clock,
   Calendar,
-  MessageSquare,
-  Send,
   AlertCircle,
   CheckCircle2,
   ArrowLeft,
   Loader2,
   Shield,
+  UserCheck,
 } from 'lucide-react';
 import { format, differenceInMinutes } from 'date-fns';
 import Link from 'next/link';
-import { collection, addDoc, serverTimestamp, doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '@/lib/firebase';
 import AuthGuard from '@/components/portal/AuthGuard';
 import PortalSidebar from '@/components/portal/PortalSidebar';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { useAppointments } from '@/lib/hooks/useAppointments';
-import { watchConsultationMessages, markDoctorJoined, markDoctorLeft, type ConsultationMessage } from '@/lib/firestore';
+import { usePatientDocuments } from '@/lib/hooks/usePatientDocuments';
+import { markDoctorJoined, markDoctorLeft, markSessionStarted, cancelAppointmentByDoctor } from '@/lib/firestore';
 import LiveKitCall from '@/components/portal/LiveKitCall';
+import ConsultationWorkspace from '@/components/portal/ConsultationWorkspace';
+import PostSessionSummary from '@/components/portal/PostSessionSummary';
+import NextSessionCard from '@/components/portal/NextSessionCard';
 import { supportsE2EE } from '@/lib/e2ee';
+import { usePatientNotes } from '@/lib/hooks/usePatientNotes';
 import type { Appointment } from '@/lib/types';
+import { JOIN_WINDOW_MINUTES } from '@/lib/types';
 
 export default function ConsultationPage() {
   return (
@@ -47,7 +52,20 @@ function ConsultationContent() {
   const { specialist } = useAuth();
   const { appointments, loading: aptsLoading } = useAppointments(specialist?.id);
 
-  const appointment = appointments.find((a) => a.id === appointmentId);
+  // Smart auto-detection when no appointmentId query param (Fix 3)
+  const autoAppointment = !appointmentId ? (
+    // Priority 1: Active session (room opened, not ended)
+    appointments.find(a =>
+      (a.status === 'inProgress' || a.status === 'confirmed') &&
+      !!a.doctorJoinedAt && !a.doctorLeftAt
+    )
+    // Priority 2: Next upcoming confirmed
+    ?? appointments
+      .filter(a => a.status === 'confirmed' && new Date(a.scheduledAt) > new Date())
+      .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())[0]
+  ) : null;
+
+  const appointment = appointments.find((a) => a.id === appointmentId) ?? autoAppointment ?? null;
   const userId = appointment?.userId ?? null;
 
   if (aptsLoading) {
@@ -68,12 +86,13 @@ function ConsultationContent() {
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <AlertCircle className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <p className="text-sm text-slate-500">Appointment not found</p>
+            <p className="text-lg font-semibold text-slate-700">No active session</p>
+            <p className="text-sm text-slate-500 mt-1">Check your appointments to start a consultation</p>
             <Link
-              href="/portal/dashboard"
-              className="inline-flex items-center gap-2 mt-4 text-sm text-violet-600 font-medium hover:text-violet-700"
+              href="/portal/appointments"
+              className="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 transition-colors"
             >
-              <ArrowLeft className="w-4 h-4" /> Back to Dashboard
+              View Appointments
             </Link>
           </div>
         </main>
@@ -85,7 +104,7 @@ function ConsultationContent() {
     <div className="flex min-h-screen bg-slate-50">
       <PortalSidebar />
       <main className="flex-1 p-8">
-        <ConsultationView appointment={appointment} userId={userId} specialist={specialist} />
+        <ConsultationView appointment={appointment} userId={userId} specialist={specialist} appointments={appointments} />
       </main>
     </div>
   );
@@ -95,36 +114,25 @@ interface ConsultationViewProps {
   appointment: Appointment;
   userId: string;
   specialist: { id: string; name: string; authUid: string } | null;
+  appointments: Appointment[];
 }
 
-function ConsultationView({ appointment, userId, specialist }: ConsultationViewProps) {
+function ConsultationView({ appointment, userId, specialist, appointments }: ConsultationViewProps) {
   const [now, setNow] = useState(new Date());
-  const [messages, setMessages] = useState<ConsultationMessage[]>([]);
-  const [newMessage, setNewMessage] = useState('');
-  const [sending, setSending] = useState(false);
   const [ending, setEnding] = useState(false);
   const [starting, setStarting] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    const unsub = watchConsultationMessages(userId, appointment.id, setMessages);
-    return unsub;
-  }, [userId, appointment.id]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
   const scheduledDate = new Date(appointment.scheduledAt);
   const minutesBefore = differenceInMinutes(scheduledDate, now);
   const minutesAfter = differenceInMinutes(now, scheduledDate);
   const duration = appointment.durationMinutes || 30;
-  const isWithinJoinWindow = minutesBefore <= 15 && minutesAfter <= (duration + 15);
+  // Fix 9: Use JOIN_WINDOW_MINUTES constant
+  const isWithinJoinWindow = minutesBefore <= JOIN_WINDOW_MINUTES && minutesAfter <= (duration + JOIN_WINDOW_MINUTES);
   const isValidRoom = appointment.meetingUrl?.startsWith('consultation-') || appointment.meetingUrl?.startsWith('https://meet.jit.si/');
   const isLegacyJitsi = appointment.meetingUrl?.startsWith('https://meet.jit.si/');
 
@@ -134,8 +142,8 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
   const hasDoctorJoined = !!appointment.doctorJoinedAt;
   const hasDoctorLeft = !!appointment.doctorLeftAt;
 
-  // Doctor can start the meeting if within join window and hasn't started yet
-  const canStartMeeting = !hasDoctorJoined && !isSessionEnded && isWithinJoinWindow &&
+  // Doctor can open the room if within join window and hasn't started yet
+  const canOpenRoom = !hasDoctorJoined && !isSessionEnded && isWithinJoinWindow &&
     (appointment.status === 'confirmed' || appointment.status === 'inProgress');
 
   // Doctor can rejoin if already started and session not ended
@@ -150,15 +158,34 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
   const [e2eeResolved, setE2eeResolved] = useState(false);
   // Tracks whether doctor manually left the call (prevents auto-rejoin)
   const [manuallyLeft, setManuallyLeft] = useState(false);
+  // Fix 15: patientReady state — patient has joined and E2EE is negotiated
+  const [patientReady, setPatientReady] = useState(false);
 
-  // Doctor is waiting for patient when: meeting started but E2EE not yet resolved
-  // This covers both fresh start and page refresh after starting
+  // Fix 12: styled end-session modal
+  const [showEndConfirm, setShowEndConfirm] = useState(false);
+  // Fix 15: refund-aware cancel modal
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+
+  // Doctor is waiting for patient when: room opened but E2EE not yet resolved
   const isPatientE2eeResolved = appointment.sessionE2ee !== undefined && appointment.sessionE2ee !== null;
-  const waitingForPatient = hasDoctorJoined && !hasDoctorLeft && !isSessionEnded && !isLegacyJitsi && !showCall && !isPatientE2eeResolved;
+  const waitingForPatient = hasDoctorJoined && !hasDoctorLeft && !isSessionEnded && !isLegacyJitsi && !showCall && !isPatientE2eeResolved && !patientReady;
 
   const displayName = appointment.anonymousMode
     ? appointment.anonymousAlias || 'Anonymous Patient'
-    : 'Patient';
+    : appointment.patientName || 'Patient';
+
+  // Patient key for workspace (anonymous sessions use anon:{appointmentId})
+  const patientKey = appointment.anonymousMode
+    ? `anon:${appointment.id}`
+    : userId;
+
+  // Fix 10: Real document count
+  const { notes: patientNotes } = usePatientNotes(specialist?.id ?? '', patientKey);
+  const { documents: patientDocuments } = usePatientDocuments(specialist?.id ?? '', patientKey);
+  const sessionNotes = patientNotes.filter(n => n.appointmentId === appointment.id);
+  const sessionDocuments = patientDocuments.filter(d => d.appointmentId === appointment.id);
 
   // Fetch token with E2EE config from Cloud Function
   const fetchTokenWithE2EE = useCallback(async (useE2EE: boolean) => {
@@ -175,13 +202,14 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
       setCallToken(data.token);
       setE2eeKey(data.e2eeKey ?? null);
       setSessionE2ee(useE2EE);
+      setPatientReady(true);
       setShowCall(true);
     } catch (err) {
       console.error('Failed to fetch call token:', err);
     }
   }, [specialist, appointment.meetingUrl]);
 
-  // Listen for patient's E2EE capability (sessionE2ee field) after doctor starts meeting
+  // Listen for patient's E2EE capability (sessionE2ee field) after doctor opens room
   useEffect(() => {
     if (!waitingForPatient && !canRejoinCall) return;
     if (isLegacyJitsi) return;
@@ -211,50 +239,65 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
     return unsub;
   }, [waitingForPatient, canRejoinCall, isLegacyJitsi, appointment.sessionE2ee, appointment.id, userId, e2eeResolved, manuallyLeft, fetchTokenWithE2EE]);
 
-  const handleStartMeeting = async () => {
+  const handleOpenRoom = async () => {
     setStarting(true);
     try {
       await markDoctorJoined(userId, appointment.id, supportsE2EE());
-      // doctorJoinedAt is now set → waitingForPatient becomes true (derived)
-      // The useEffect listener will pick up sessionE2ee when patient writes it
     } catch (err) {
-      console.error('Failed to start meeting:', err);
+      console.error('Failed to open room:', err);
     } finally {
       setStarting(false);
     }
   };
 
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() || !specialist) return;
-    setSending(true);
-    try {
-      await addDoc(
-        collection(db, 'users', userId, 'appointments', appointment.id, 'messages'),
-        {
-          senderId: specialist.authUid,
-          senderName: specialist.name,
-          text: newMessage.trim(),
-          timestamp: serverTimestamp(),
-          isAnonymous: false,
-        },
-      );
-      setNewMessage('');
-    } catch (err) {
-      console.error('Failed to send message:', err);
-    } finally {
-      setSending(false);
+  // Fix 15: Start session sets status to inProgress
+  const handleStartSession = async () => {
+    if (appointment.sessionE2ee !== undefined && appointment.sessionE2ee !== null) {
+      try {
+        await markSessionStarted(userId, appointment.id);
+      } catch (err) {
+        console.error('Failed to mark session started:', err);
+      }
+      fetchTokenWithE2EE(appointment.sessionE2ee);
     }
   };
 
+  const handleRejoinSession = () => {
+    if (isPatientE2eeResolved) {
+      setManuallyLeft(false);
+      fetchTokenWithE2EE(appointment.sessionE2ee!);
+    }
+  };
+
+  // Fix 12: styled end session
   const handleEndSession = async () => {
-    if (!confirm('Are you sure you want to end this session? This will mark the appointment as completed.')) return;
     setEnding(true);
     try {
       await markDoctorLeft(userId, appointment.id);
+      setShowCall(false);
+      setShowEndConfirm(false);
     } catch (err) {
       console.error('Failed to end session:', err);
     } finally {
       setEnding(false);
+    }
+  };
+
+  // Fix 15: Refund-aware cancel
+  const isPaid = appointment.paymentStatus === 'success';
+  const willRefund = isPaid && (!hasDoctorJoined || patientReady);
+
+  const handleCancel = async () => {
+    if (!cancelReason.trim()) return;
+    setCancelling(true);
+    try {
+      await cancelAppointmentByDoctor(userId, appointment.id, cancelReason.trim(), willRefund);
+      setShowCancelConfirm(false);
+      setCancelReason('');
+    } catch (err) {
+      console.error('Failed to cancel:', err);
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -273,7 +316,7 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
           <ArrowLeft className="w-5 h-5 text-slate-600" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Consultation</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Consultation Room</h1>
           <p className="text-sm text-slate-500">
             Session with {displayName}
           </p>
@@ -283,18 +326,34 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
             Session Ended
           </span>
         )}
-        {hasDoctorJoined && !isSessionEnded && (
-          <span className={`ml-auto px-3 py-1 rounded-lg text-xs font-semibold ${
-            waitingForPatient
-              ? 'bg-amber-100 text-amber-700'
-              : showCall
-                ? 'bg-emerald-100 text-emerald-700'
-                : 'bg-violet-100 text-violet-700'
-          }`}>
-            {waitingForPatient ? 'Waiting for Patient' : showCall ? 'In Call' : 'Meeting Ready'}
+        {showCall && !isSessionEnded && (
+          <span className="ml-auto px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-100 text-emerald-700">
+            In Session
+          </span>
+        )}
+        {canRejoinCall && !showCall && !isSessionEnded && !waitingForPatient && !patientReady && (
+          <span className="ml-auto px-3 py-1 rounded-lg text-xs font-semibold bg-violet-100 text-violet-700">
+            Session Started
           </span>
         )}
       </div>
+
+      {/* Post-Session Summary (Fix 10: real document count) */}
+      {isSessionEnded && (
+        <>
+          <PostSessionSummary
+            doctorJoinedAt={appointment.doctorJoinedAt}
+            doctorLeftAt={appointment.doctorLeftAt}
+            consultationType={appointment.consultationType}
+            patientName={displayName}
+            rating={appointment.rating}
+            ratingComment={appointment.ratingComment}
+            notesCount={sessionNotes.length}
+            documentsCount={sessionDocuments.length}
+          />
+          <NextSessionCard appointments={appointments} currentAppointment={appointment} />
+        </>
+      )}
 
       {/* Embedded LiveKit Call */}
       {showCall && !isLegacyJitsi && appointment.meetingUrl && specialist && callToken && (
@@ -309,7 +368,14 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
             roomName={appointment.meetingUrl}
             participantName={specialist.name}
             isAudio={isAudio}
-            onDisconnected={() => { setShowCall(false); setManuallyLeft(true); }}
+            onDisconnected={() => {
+              setShowCall(false);
+              setManuallyLeft(true);
+              // Fix 1: Reset state on disconnect
+              setPatientReady(false);
+              setCallToken(null);
+              setE2eeKey(null);
+            }}
             token={callToken}
             e2eeEnabled={sessionE2ee}
             e2eeKey={e2eeKey ?? undefined}
@@ -318,29 +384,34 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column: Call + Patient Info */}
+        {/* Left Column: Session Controls + Patient Info */}
         <div className="lg:col-span-1 space-y-4">
-          {/* Call Card */}
+          {/* Session Controls Card (Fix 6: unified) */}
           <div className={`p-5 rounded-2xl border ${
             waitingForPatient
               ? 'bg-amber-50 border-amber-200 ring-1 ring-amber-200/40'
-              : canRejoinCall
+              : patientReady && !showCall
                 ? 'bg-emerald-50 border-emerald-200 ring-1 ring-emerald-200/40'
-                : canStartMeeting
-                  ? 'bg-violet-50 border-violet-200 ring-1 ring-violet-200/40'
-                  : 'bg-white border-slate-200'
+                : canRejoinCall && !showCall && !waitingForPatient
+                  ? 'bg-emerald-50 border-emerald-200 ring-1 ring-emerald-200/40'
+                  : canOpenRoom
+                    ? 'bg-violet-50 border-violet-200 ring-1 ring-violet-200/40'
+                    : 'bg-white border-slate-200'
           }`}>
             <div className="flex items-center gap-2 mb-3">
-              <CallIcon className={`w-5 h-5 ${waitingForPatient ? 'text-amber-600' : canRejoinCall ? 'text-emerald-600' : canStartMeeting ? 'text-violet-600' : 'text-slate-400'}`} />
-              <h3 className="font-semibold text-sm text-slate-800">
-                {isAudio ? 'Audio' : 'Video'} Call
-              </h3>
+              <CallIcon className={`w-5 h-5 ${
+                waitingForPatient ? 'text-amber-600'
+                : patientReady || canRejoinCall ? 'text-emerald-600'
+                : canOpenRoom ? 'text-violet-600'
+                : 'text-slate-400'
+              }`} />
+              <h3 className="font-semibold text-sm text-slate-800">Session Controls</h3>
             </div>
 
-            {/* Step 1: Start Meeting (sets doctorJoinedAt) */}
-            {canStartMeeting && (
+            {/* Step 1: Open Room (sets doctorJoinedAt) */}
+            {canOpenRoom && (
               <button
-                onClick={handleStartMeeting}
+                onClick={handleOpenRoom}
                 disabled={starting}
                 className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-violet-600 text-white font-medium hover:bg-violet-700 transition-colors shadow-sm disabled:opacity-50"
               >
@@ -349,21 +420,42 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
                 ) : (
                   <CallIcon className="w-4 h-4" />
                 )}
-                {starting ? 'Starting...' : 'Start Meeting'}
+                {starting ? 'Opening...' : 'Open Room'}
               </button>
             )}
 
-            {/* Step 2: Join/Rejoin Call */}
-            {/* Waiting for patient indicator (inside call card) */}
+            {/* Waiting for Patient (Fix 6: styled amber card) */}
             {waitingForPatient && (
-              <div className="flex items-center gap-2 text-sm text-violet-600">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Waiting for patient to join...
+              <div>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+                  <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded">Room Open</span>
+                </div>
+                <p className="text-sm font-medium text-amber-800">Waiting for patient to join...</p>
+                <p className="text-xs text-amber-600 mt-1">The patient has been notified that the room is open</p>
               </div>
             )}
 
-            {/* Rejoin Call — only when patient has already resolved E2EE and call is not showing */}
-            {canRejoinCall && !showCall && !waitingForPatient && (
+            {/* Patient Ready — Start Session (Fix 6: styled emerald card) */}
+            {patientReady && !showCall && !manuallyLeft && (
+              <div>
+                <div className="flex items-center gap-3 mb-3">
+                  <UserCheck className="w-5 h-5 text-emerald-600" />
+                  <span className="text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">Patient Joined</span>
+                </div>
+                <p className="text-sm font-medium text-emerald-800 mb-3">Patient has joined — start when ready</p>
+                <button
+                  onClick={handleStartSession}
+                  className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-emerald-600 text-white font-medium hover:bg-emerald-700 transition-colors shadow-sm"
+                >
+                  <CallIcon className="w-4 h-4" />
+                  Start Session
+                </button>
+              </div>
+            )}
+
+            {/* Rejoin Call (Fix 1: shows after disconnect) */}
+            {canRejoinCall && !showCall && !waitingForPatient && !patientReady && (
               isLegacyJitsi ? (
                 <a
                   href={appointment.meetingUrl!}
@@ -377,13 +469,7 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
                 </a>
               ) : (
                 <button
-                  onClick={() => {
-                    // Patient already resolved E2EE — fetch token and rejoin
-                    if (isPatientE2eeResolved) {
-                      setManuallyLeft(false);
-                      fetchTokenWithE2EE(appointment.sessionE2ee!);
-                    }
-                  }}
+                  onClick={handleRejoinSession}
                   className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-emerald-600 text-white font-medium hover:bg-emerald-700 transition-colors shadow-sm"
                 >
                   <CallIcon className="w-4 h-4" />
@@ -400,20 +486,30 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
               </div>
             )}
 
-            {/* Not yet in join window */}
-            {!canStartMeeting && !canRejoinCall && !isSessionEnded && (
+            {/* Not yet in join window (Fix 16: dynamic countdown) */}
+            {!canOpenRoom && !canRejoinCall && !isSessionEnded && !waitingForPatient && !patientReady && !showCall && (
               <div className="flex items-center gap-2 text-sm text-amber-600">
                 <AlertCircle className="w-4 h-4" />
-                {minutesBefore > 15
-                  ? `Join opens in ${minutesBefore - 15} min`
+                {minutesBefore > JOIN_WINDOW_MINUTES
+                  ? `Starts in ${minutesBefore} min — join window opens in ${minutesBefore - JOIN_WINDOW_MINUTES} min`
                   : 'Join window has passed'}
               </div>
             )}
 
-            {/* End Session button */}
-            {!isSessionEnded && (appointment.status === 'confirmed' || appointment.status === 'inProgress') && (
+            {/* Fix 15: Cancel Appointment — only before session starts (status still confirmed) */}
+            {!isSessionEnded && appointment.status === 'confirmed' && (
               <button
-                onClick={handleEndSession}
+                onClick={() => setShowCancelConfirm(true)}
+                className="mt-3 w-full py-2 rounded-xl border border-red-200 text-red-600 text-sm font-medium hover:bg-red-50 transition-colors"
+              >
+                Cancel Appointment
+              </button>
+            )}
+
+            {/* Fix 15: End Session — only after session has started (status is inProgress) */}
+            {!isSessionEnded && appointment.status === 'inProgress' && (
+              <button
+                onClick={() => setShowEndConfirm(true)}
                 disabled={ending}
                 className="mt-3 w-full py-2 rounded-xl border border-red-200 text-red-600 text-sm font-medium hover:bg-red-50 transition-colors disabled:opacity-50"
               >
@@ -461,86 +557,102 @@ function ConsultationView({ appointment, userId, specialist }: ConsultationViewP
           </div>
         </div>
 
-        {/* Right Column: Chat */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 flex flex-col" style={{ height: 'calc(100vh - 180px)' }}>
-          {/* Chat Header */}
-          <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-slate-400" />
-            <h3 className="font-semibold text-sm text-slate-800">Consultation Chat</h3>
-            <span className="text-xs text-slate-400 ml-auto">{messages.length} message{messages.length !== 1 ? 's' : ''}</span>
-          </div>
-
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-            {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center">
-                <MessageSquare className="w-10 h-10 text-slate-200 mb-2" />
-                <p className="text-sm text-slate-400">No messages yet</p>
-                <p className="text-xs text-slate-300 mt-1">Start the conversation with your patient</p>
-              </div>
-            ) : (
-              messages.map((msg) => {
-                const isMe = specialist && msg.senderId === specialist.authUid;
-                return (
-                  <div
-                    key={msg.id}
-                    className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div
-                      className={`max-w-[70%] px-4 py-2.5 rounded-2xl text-sm ${
-                        isMe
-                          ? 'bg-violet-600 text-white rounded-br-md'
-                          : 'bg-slate-100 text-slate-800 rounded-bl-md'
-                      }`}
-                    >
-                      {!isMe && (
-                        <p className={`text-xs font-medium mb-1 ${isMe ? 'text-violet-200' : 'text-slate-500'}`}>
-                          {msg.isAnonymous ? 'Anonymous' : msg.senderName}
-                        </p>
-                      )}
-                      <p>{msg.text}</p>
-                      {msg.timestamp && (
-                        <p className={`text-xs mt-1 ${isMe ? 'text-violet-300' : 'text-slate-400'}`}>
-                          {typeof msg.timestamp === 'string'
-                            ? format(new Date(msg.timestamp), 'hh:mm a')
-                            : ''}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Message Input */}
-          {!isSessionEnded && (
-            <div className="px-5 py-3 border-t border-slate-100">
-              <form
-                onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }}
-                className="flex items-center gap-2"
-              >
-                <input
-                  type="text"
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="Type a message..."
-                  className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
-                  disabled={sending}
-                />
-                <button
-                  type="submit"
-                  disabled={sending || !newMessage.trim()}
-                  className="p-2.5 rounded-xl bg-violet-600 text-white hover:bg-violet-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Send className="w-4 h-4" />
-                </button>
-              </form>
-            </div>
+        {/* Right Column: Workspace (Notes/Documents/History) */}
+        <div className="lg:col-span-2">
+          {specialist && (
+            <ConsultationWorkspace
+              specialistId={specialist.id}
+              patientKey={patientKey}
+              userId={userId}
+              appointmentId={appointment.id}
+              appointments={appointments}
+              isAnonymous={appointment.anonymousMode}
+            />
           )}
         </div>
       </div>
+
+      {/* Fix 12: Styled End Session Confirmation Modal */}
+      {showEndConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4"
+          >
+            <h3 className="text-lg font-bold text-slate-900 mb-2">End Session?</h3>
+            <p className="text-sm text-slate-500 mb-4">
+              This will mark the appointment as completed. The patient will be notified.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowEndConfirm(false)}
+                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+              >
+                Continue Session
+              </button>
+              <button
+                onClick={handleEndSession}
+                disabled={ending}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                {ending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'End Session'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Fix 15: Refund-Aware Cancel Confirmation Modal */}
+      {showCancelConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md mx-4"
+          >
+            <h3 className="text-lg font-bold text-slate-900 mb-2">Cancel Appointment?</h3>
+            {willRefund ? (
+              <p className="text-sm text-slate-500 mb-1">
+                The patient will receive a <span className="font-semibold text-emerald-600">full refund</span>. This will be deducted from your earnings.
+              </p>
+            ) : isPaid ? (
+              <p className="text-sm text-slate-500 mb-1">
+                The patient did not join the session. <span className="font-semibold text-slate-700">No refund</span> will be issued.
+              </p>
+            ) : (
+              <p className="text-sm text-slate-500 mb-1">This appointment has no payment on record.</p>
+            )}
+            <div className="mt-3 mb-4">
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Reason for cancellation <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Please provide a reason..."
+                rows={3}
+                className="w-full px-4 py-3 bg-slate-50/80 border border-slate-200 rounded-xl text-sm text-slate-900 focus:ring-2 focus:ring-red-500/30 focus:border-red-400 outline-none transition-all resize-none"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowCancelConfirm(false); setCancelReason(''); }}
+                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+              >
+                Keep Appointment
+              </button>
+              <button
+                onClick={handleCancel}
+                disabled={!cancelReason.trim() || cancelling}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                {cancelling ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Cancel Appointment'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </motion.div>
   );
 }

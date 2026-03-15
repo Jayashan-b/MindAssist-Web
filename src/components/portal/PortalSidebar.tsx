@@ -22,7 +22,7 @@ const navItems = [
   { href: '/portal/slots', label: 'Manage Slots', icon: CalendarClock },
   { href: '/portal/appointments', label: 'Appointments', icon: ClipboardList },
   { href: '/portal/patients', label: 'Patients', icon: Users },
-  { href: '/portal/consultation', label: 'Consultation', icon: Video },
+  { href: '/portal/consultation', label: 'Consultation Room', icon: Video },
   { href: '/portal/income', label: 'Income', icon: TrendingUp },
   { href: '/portal/profile', label: 'Profile', icon: UserCircle },
 ];

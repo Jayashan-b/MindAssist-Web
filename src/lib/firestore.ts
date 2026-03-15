@@ -129,6 +129,7 @@ function appointmentFromDoc(data: DocumentData, id: string): Appointment {
     doctorE2eeCapable: data.doctorE2eeCapable ?? undefined,
     patientE2eeCapable: data.patientE2eeCapable ?? undefined,
     sessionE2ee: data.sessionE2ee ?? undefined,
+    refundStatus: data.refundStatus ?? null,
   };
 }
 
@@ -171,7 +172,19 @@ export async function markDoctorJoined(
     {
       doctorJoinedAt: new Date().toISOString(),
       doctorE2eeCapable: e2eeCapable,
+    },
+  );
+}
+
+export async function markSessionStarted(
+  userId: string,
+  appointmentId: string,
+): Promise<void> {
+  await updateDoc(
+    doc(db, 'users', userId, 'appointments', appointmentId),
+    {
       status: 'inProgress',
+      sessionStartedAt: new Date().toISOString(),
     },
   );
 }
@@ -229,6 +242,7 @@ export async function cancelAppointmentByDoctor(
   userId: string,
   appointmentId: string,
   reason: string,
+  withRefund: boolean = true,
 ): Promise<void> {
   await updateDoc(
     doc(db, 'users', userId, 'appointments', appointmentId),
@@ -237,6 +251,7 @@ export async function cancelAppointmentByDoctor(
       cancelledAt: new Date().toISOString(),
       cancelledBy: 'doctor',
       cancellationReason: reason,
+      refundStatus: withRefund ? 'pending' : 'none',
     },
   );
 }
