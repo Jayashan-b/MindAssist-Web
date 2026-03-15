@@ -241,7 +241,7 @@ export default function ConsultationWorkspace({
             )}
 
             {/* Clinical Notes Section */}
-              <div className="mt-6 pt-4 border-t border-slate-100">
+            <div className="mt-6 pt-4 border-t border-slate-100">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <Stethoscope className="w-3.5 h-3.5 text-slate-500" />

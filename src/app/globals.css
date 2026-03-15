@@ -26,3 +26,14 @@ body {
   max-width: 300px;
   flex-shrink: 1;
 }
+
+/* Prevent video tile from pushing control bar out of view */
+.lk-video-conference-inner {
+  overflow: hidden;
+}
+
+.lk-grid-layout-wrapper {
+  flex: 1 1 0px;
+  min-height: 0;
+  overflow: hidden;
+}

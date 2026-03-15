@@ -107,7 +107,7 @@ function ConsultationContent() {
     <div className="flex min-h-screen bg-slate-50">
       <PortalSidebar />
       <main className="flex-1 p-8">
-        <ConsultationView appointment={appointment} userId={userId} specialist={specialist} appointments={appointments} autoAction={searchParams.get('action')} />
+        <ConsultationView appointment={appointment} userId={userId} specialist={specialist} appointments={appointments} />
       </main>
     </div>
   );
@@ -118,11 +118,12 @@ interface ConsultationViewProps {
   userId: string;
   specialist: { id: string; name: string; authUid: string } | null;
   appointments: Appointment[];
-  autoAction?: string | null;
 }
 
-function ConsultationView({ appointment, userId, specialist, appointments, autoAction }: ConsultationViewProps) {
+function ConsultationView({ appointment, userId, specialist, appointments }: ConsultationViewProps) {
   const callSession = useCallSession();
+  // Destructure startCall for a stable reference (it's a useCallback with [] deps)
+  const { startCall } = callSession;
   const videoSlotRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(new Date());
   const [ending, setEnding] = useState(false);
@@ -164,22 +165,36 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
     if (slot && host && showCall) {
       host.className = 'h-full';
       slot.appendChild(host);
-      return () => { host.remove(); };
+      // Browsers pause <video> elements when moved via appendChild.
+      // Resume any paused videos after reattachment.
+      requestAnimationFrame(() => {
+        host.querySelectorAll('video').forEach((v) => {
+          if (v.paused && v.srcObject) v.play().catch(() => {});
+        });
+      });
+      return () => {
+        // Park portal host back in hidden container instead of removing from DOM.
+        // Keeps LiveKit video tracks alive during navigation.
+        const parking = document.querySelector<HTMLDivElement>('[data-portal-parking]');
+        if (parking) parking.appendChild(host);
+      };
     }
   }, [callSession.videoPortalHost, showCall]);
 
   // E2EE negotiation state (only e2eeResolved + patientReady remain local — they're per-appointment UI state)
-  const [e2eeResolved, setE2eeResolved] = useState(false);
-  // Tracks whether doctor manually left the call (prevents auto-rejoin)
-  const [manuallyLeft, setManuallyLeft] = useState(false);
+  // Derive initial value from provider: if already connected for this appointment, skip re-negotiation
+  const [e2eeResolved, setE2eeResolved] = useState(
+    () => callSession.isConnected && callSession.activeAppointmentId === appointment.id
+  );
   // patientReady state — patient has joined and E2EE is negotiated
-  const [patientReady, setPatientReady] = useState(false);
+  const [patientReady, setPatientReady] = useState(
+    () => callSession.isConnected && callSession.activeAppointmentId === appointment.id
+  );
 
-  // Reset local state when context disconnects (e.g. network drop)
+  // Reset patientReady when call disconnects (e.g. network drop or leave)
   const prevShowCall = useRef(showCall);
   useEffect(() => {
     if (prevShowCall.current && !showCall) {
-      setManuallyLeft(true);
       setPatientReady(false);
     }
     prevShowCall.current = showCall;
@@ -187,9 +202,6 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
 
   // Engine phase for UI rendering (single source of truth)
   const enginePhase = getSessionPhase(appointment, now, { isInCall: showCall }).phase;
-
-  // Auto-rejoin: triggered when navigating from Dashboard/Appointments with ?action=rejoin
-  const autoRejoinTriggered = useRef(false);
 
   // Styled end-session modal
   const [showEndConfirm, setShowEndConfirm] = useState(false);
@@ -217,7 +229,8 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
   const sessionNotes = patientNotes.filter(n => n.appointmentId === appointment.id);
   const sessionDocuments = patientDocuments.filter(d => d.appointmentId === appointment.id);
 
-  // Fetch token with E2EE config from Cloud Function — now calls context's startCall
+  // Fetch token with E2EE config from Cloud Function — calls context's startCall.
+  // Uses destructured startCall (stable ref) to avoid re-creating this callback on every render.
   const fetchTokenWithE2EE = useCallback(async (useE2EE: boolean) => {
     if (!specialist || !appointment.meetingUrl) return;
     try {
@@ -230,7 +243,7 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
       });
       const data = result.data as { token: string; e2eeKey?: string };
       setPatientReady(true);
-      await callSession.startCall({
+      await startCall({
         appointmentId: appointment.id,
         appointment,
         token: data.token,
@@ -240,37 +253,34 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
     } catch (err) {
       console.error('Failed to fetch call token:', err);
     }
-  }, [specialist, appointment, callSession]);
+  }, [specialist, appointment, startCall]);
 
-  // Listen for patient's E2EE capability (sessionE2ee field) after doctor opens room
+  // Effect A: Listen for patient's E2EE capability — only updates UI state, does NOT connect to LiveKit.
+  // Doctor must click "Start Session" to actually connect.
   useEffect(() => {
-    if (!waitingForPatient && !canRejoinCall) return;
+    if (!waitingForPatient) return;
     if (isLegacyJitsi) return;
-    // Don't auto-connect if doctor manually left the call
-    if (manuallyLeft) return;
 
-    // If sessionE2ee is already resolved (rejoin case), use it immediately
+    // If already resolved from Firestore data, just sync local state
     if (appointment.sessionE2ee !== undefined && appointment.sessionE2ee !== null) {
-      if (!e2eeResolved) {
-        setE2eeResolved(true);
-        fetchTokenWithE2EE(appointment.sessionE2ee);
-      }
+      if (!e2eeResolved) setE2eeResolved(true);
+      if (!patientReady) setPatientReady(true);
       return;
     }
 
-    // Listen for changes on the appointment document
+    // Listen for patient setting sessionE2ee field
     const unsub = onSnapshot(
       doc(db, 'users', userId, 'appointments', appointment.id),
       (snap) => {
         const data = snap.data();
         if (data?.sessionE2ee !== undefined && data?.sessionE2ee !== null) {
           setE2eeResolved(true);
-          fetchTokenWithE2EE(data.sessionE2ee as boolean);
+          setPatientReady(true);
         }
       },
     );
     return unsub;
-  }, [waitingForPatient, canRejoinCall, isLegacyJitsi, appointment.sessionE2ee, appointment.id, userId, e2eeResolved, manuallyLeft, fetchTokenWithE2EE]);
+  }, [waitingForPatient, isLegacyJitsi, appointment.sessionE2ee, appointment.id, userId, e2eeResolved, patientReady]);
 
   const handleOpenRoom = async () => {
     setStarting(true);
@@ -297,18 +307,9 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
 
   const handleRejoinSession = () => {
     if (isPatientE2eeResolved) {
-      setManuallyLeft(false);
       fetchTokenWithE2EE(appointment.sessionE2ee!);
     }
   };
-
-  // Auto-rejoin effect: when arriving with ?action=rejoin and session is disconnected
-  useEffect(() => {
-    if (autoAction === 'rejoin' && !autoRejoinTriggered.current && enginePhase === 'disconnected' && !showCall) {
-      autoRejoinTriggered.current = true;
-      handleRejoinSession();
-    }
-  }, [autoAction, enginePhase, showCall]);
 
   // End session — calls context's endCall
   const handleEndSession = async () => {
