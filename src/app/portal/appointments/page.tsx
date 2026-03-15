@@ -7,7 +7,9 @@ import AuthGuard from '@/components/portal/AuthGuard';
 import PortalSidebar from '@/components/portal/PortalSidebar';
 import AppointmentCard from '@/components/portal/AppointmentCard';
 import SessionNotificationBanner from '@/components/portal/SessionNotificationBanner';
+import ActiveSessionCard from '@/components/portal/ActiveSessionCard';
 import { useAuth } from '@/lib/hooks/useAuth';
+import { useCallSession } from '@/lib/hooks/useCallSession';
 import { useAppointments, isStaleInProgress } from '@/lib/hooks/useAppointments';
 import { useSessionNotifications } from '@/lib/hooks/useSessionNotifications';
 import { usePatients } from '@/lib/hooks/usePatients';
@@ -38,15 +40,16 @@ export default function AppointmentsPage() {
 
 function AppointmentsContent() {
   const { specialist } = useAuth();
+  const callSession = useCallSession();
   const { appointments, upcoming, completed, cancelled, inProgress, loading } = useAppointments(specialist?.id);
   const { approachingSessions } = useSessionNotifications(appointments);
-  const { patients } = usePatients(appointments);
+  const { patients, getPatient } = usePatients(appointments);
   const [selectedPatient, setSelectedPatient] = useState<PatientProfile | null>(null);
 
-  const handleViewPatient = useCallback((userId: string) => {
-    const match = patients.find((p) => p.userId === userId);
+  const handleViewPatient = useCallback((profileKey: string) => {
+    const match = getPatient(profileKey);
     if (match) setSelectedPatient(match);
-  }, [patients]);
+  }, [getPatient]);
 
   const [tab, setTab] = useState<TabFilter>('all');
   const [search, setSearch] = useState('');
@@ -130,8 +133,9 @@ function AppointmentsContent() {
             </p>
           </div>
 
-          {/* Session Notifications */}
+          {/* Approaching session notifications */}
           <SessionNotificationBanner sessions={approachingSessions} />
+          <ActiveSessionCard />
 
           {/* Search + Sort */}
           <div className="flex items-center gap-3 mb-4">
@@ -198,7 +202,12 @@ function AppointmentsContent() {
             ) : (
               <div className="space-y-3">
                 {filteredAppointments.map((apt) => (
-                  <AppointmentCard key={apt.id} appointment={apt} onViewPatient={handleViewPatient} />
+                  <AppointmentCard
+                    key={apt.id}
+                    appointment={apt}
+                    onViewPatient={handleViewPatient}
+                    isStillConnected={callSession.isConnected && callSession.activeAppointmentId === apt.id}
+                  />
                 ))}
               </div>
             )}

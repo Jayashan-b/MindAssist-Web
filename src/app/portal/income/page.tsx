@@ -66,6 +66,7 @@ import { useAuth } from '@/lib/hooks/useAuth';
 import { useAppointments } from '@/lib/hooks/useAppointments';
 import type { Appointment } from '@/lib/types';
 import type { LucideIcon } from 'lucide-react';
+import ActiveSessionCard from '@/components/portal/ActiveSessionCard';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -851,6 +852,8 @@ function IncomeContent() {
               <p className="text-sm text-slate-500 mt-1">Track your consultation earnings and performance insights</p>
             </div>
           </div>
+
+          <ActiveSessionCard />
 
           {/* Time Range Selector */}
           <div className="flex gap-2 mb-6">

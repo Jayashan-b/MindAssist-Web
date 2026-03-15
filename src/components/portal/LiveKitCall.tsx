@@ -27,14 +27,15 @@ export default function LiveKitCall({
   const [error, setError] = useState<string | null>(null);
   const [room, setRoom] = useState<Room | null>(null);
 
-  // Create Room instance with optional E2EE configuration
+  // Create Room instance with optional E2EE configuration.
+  // token is in the dependency array so the Room is fully recreated on rejoin
+  // (old Room disconnected, new Room created) — prevents stale participant maps.
   useEffect(() => {
     let cancelled = false;
     let currentRoom: Room | null = null;
 
     const initRoom = async () => {
       try {
-        // E2EE config must be set via Room constructor options
         const keyProvider = e2eeEnabled && e2eeKey
           ? new ExternalE2EEKeyProvider()
           : undefined;
@@ -65,6 +66,8 @@ export default function LiveKitCall({
 
         if (!cancelled) {
           setRoom(currentRoom);
+        } else {
+          await currentRoom.disconnect();
         }
       } catch (err) {
         console.error('Room init failed:', err);
@@ -76,10 +79,10 @@ export default function LiveKitCall({
 
     return () => {
       cancelled = true;
-      currentRoom?.disconnect();
       setRoom(null);
+      currentRoom?.disconnect().catch(() => {});
     };
-  }, [roomName, e2eeEnabled, e2eeKey]);
+  }, [roomName, e2eeEnabled, e2eeKey, token]);
 
   const handleDisconnected = useCallback(() => {
     onDisconnected?.();

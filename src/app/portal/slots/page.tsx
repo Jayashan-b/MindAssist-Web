@@ -10,6 +10,7 @@ import SlotCalendar from '@/components/portal/SlotCalendar';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { useSlots } from '@/lib/hooks/useSlots';
 import { useAppointments } from '@/lib/hooks/useAppointments';
+import ActiveSessionCard from '@/components/portal/ActiveSessionCard';
 import { getBookedSlotsForSpecialist } from '@/lib/firestore';
 import { TIME_SLOTS, SLOT_PRESETS, getSlotPeriod } from '@/lib/types';
 
@@ -131,6 +132,8 @@ function SlotsContent() {
               </button>
             </div>
           </div>
+
+          <ActiveSessionCard />
 
           <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-6">
             {/* Enhanced Calendar */}

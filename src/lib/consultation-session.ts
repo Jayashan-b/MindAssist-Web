@@ -19,6 +19,7 @@ export type SessionPhase =
   | 'roomOpen'
   | 'patientReady'
   | 'inSession'
+  | 'activeElsewhere'
   | 'disconnected'
   | 'ended'
   | 'cancelled'
@@ -33,7 +34,7 @@ export interface SessionPhaseInfo {
     label: string;
     className: string;
     href?: string;
-    action?: 'openRoom' | 'goToRoom' | 'startSession' | 'rejoinSession';
+    action?: 'openRoom' | 'goToRoom' | 'startSession' | 'rejoinSession' | 'returnToSession';
   } | null;
   canCancel: boolean;
   canEnd: boolean;
@@ -46,6 +47,8 @@ export interface SessionPhaseInfo {
 interface SessionPhaseOptions {
   /** Whether the doctor is currently viewing the active call UI (consultation page only) */
   isInCall?: boolean;
+  /** Whether the doctor's LiveKit Room is still connected (browsing another page) */
+  isStillConnected?: boolean;
 }
 
 // ── Core engine ─────────────────────────────────────────────────────
@@ -55,7 +58,7 @@ export function getSessionPhase(
   now: Date,
   options: SessionPhaseOptions = {},
 ): SessionPhaseInfo {
-  const { isInCall = false } = options;
+  const { isInCall = false, isStillConnected = false } = options;
 
   const scheduledDate = new Date(appointment.scheduledAt);
   const minutesBefore = differenceInMinutes(scheduledDate, now);
@@ -120,6 +123,24 @@ export function getSessionPhase(
       canCancel: false,
       canEnd: true,
       bannerText: 'Session in progress',
+    };
+  }
+
+  // ── 3.5 Active Elsewhere (doctor connected but browsing another page) ──
+  if (appointment.status === 'inProgress' && isStillConnected && !isInCall) {
+    return {
+      ...base,
+      phase: 'activeElsewhere',
+      badge: { text: 'In Session', className: 'bg-emerald-100 text-emerald-700' },
+      primaryAction: {
+        label: 'Return to Session',
+        className: 'bg-emerald-600 hover:bg-emerald-700 text-white',
+        href: consultationHref,
+        action: 'returnToSession',
+      },
+      canCancel: false,
+      canEnd: true,
+      bannerText: 'You have an active session — return to consultation room',
     };
   }
 
@@ -262,7 +283,7 @@ export function getSessionPhase(
 
 /** Returns appointments that should appear in the "Active Sessions" section */
 export function getActiveSessions(appointments: Appointment[], now: Date): Appointment[] {
-  const activePhases: SessionPhase[] = ['canOpenRoom', 'roomOpen', 'patientReady', 'disconnected'];
+  const activePhases: SessionPhase[] = ['canOpenRoom', 'roomOpen', 'patientReady', 'activeElsewhere', 'disconnected'];
   return appointments.filter((a) => activePhases.includes(getSessionPhase(a, now).phase));
 }
 
@@ -289,6 +310,7 @@ export function getActiveSessionsBannerHeader(
   now: Date,
 ): string {
   const phases = activeSessions.map((a) => getSessionPhase(a, now).phase);
+  if (phases.includes('activeElsewhere')) return 'Session in progress — return to consultation';
   if (phases.includes('disconnected')) return 'Session interrupted — rejoin now';
   if (phases.includes('patientReady')) return 'Patient ready — start session';
   if (phases.includes('roomOpen')) return 'Waiting for patient to join';
@@ -304,6 +326,7 @@ export function getCardBackground(phase: SessionPhase): string {
       return 'bg-blue-50/50 border-blue-200/60 shadow-sm ring-1 ring-blue-200/40';
     case 'patientReady':
     case 'inSession':
+    case 'activeElsewhere':
       return 'bg-emerald-50/50 border-emerald-200/60 shadow-sm ring-1 ring-emerald-200/40';
     case 'disconnected':
       return 'bg-red-50/50 border-red-200/60 shadow-sm ring-1 ring-red-200/40';

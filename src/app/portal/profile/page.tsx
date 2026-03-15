@@ -10,6 +10,7 @@ import { updateSpecialist } from '@/lib/firestore';
 import { LANGUAGES, SPECIALIZATIONS, CONSULTATION_TYPES, type SessionDuration } from '@/lib/types';
 import QualificationComboBox from '@/components/portal/QualificationComboBox';
 import SessionDurationPicker from '@/components/portal/SessionDurationPicker';
+import ActiveSessionCard from '@/components/portal/ActiveSessionCard';
 
 export default function ProfilePage() {
   return (
@@ -128,6 +129,8 @@ function ProfileContent() {
               )}
             </button>
           </div>
+
+          <ActiveSessionCard />
 
           {/* Read-only header */}
           {specialist && (

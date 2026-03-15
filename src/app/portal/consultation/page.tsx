@@ -28,12 +28,12 @@ import { useAuth } from '@/lib/hooks/useAuth';
 import { useAppointments } from '@/lib/hooks/useAppointments';
 import { usePatientDocuments } from '@/lib/hooks/usePatientDocuments';
 import { markDoctorJoined, markDoctorLeft, markSessionStarted, cancelAppointmentByDoctor } from '@/lib/firestore';
-import LiveKitCall from '@/components/portal/LiveKitCall';
 import ConsultationWorkspace from '@/components/portal/ConsultationWorkspace';
 import PostSessionSummary from '@/components/portal/PostSessionSummary';
 import NextSessionCard from '@/components/portal/NextSessionCard';
 import { supportsE2EE } from '@/lib/e2ee';
 import { usePatientNotes } from '@/lib/hooks/usePatientNotes';
+import { useCallSession } from '@/lib/hooks/useCallSession';
 import type { Appointment } from '@/lib/types';
 import { JOIN_WINDOW_MINUTES } from '@/lib/types';
 import { getSessionPhase } from '@/lib/consultation-session';
@@ -120,6 +120,8 @@ interface ConsultationViewProps {
 }
 
 function ConsultationView({ appointment, userId, specialist, appointments, autoAction }: ConsultationViewProps) {
+  const callSession = useCallSession();
+  const videoSlotRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(new Date());
   const [ending, setEnding] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -133,7 +135,6 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
   const minutesBefore = differenceInMinutes(scheduledDate, now);
   const minutesAfter = differenceInMinutes(now, scheduledDate);
   const duration = appointment.durationMinutes || 30;
-  // Fix 9: Use JOIN_WINDOW_MINUTES constant
   const isWithinJoinWindow = minutesBefore <= JOIN_WINDOW_MINUTES && minutesAfter <= (duration + JOIN_WINDOW_MINUTES);
   const isValidRoom = appointment.meetingUrl?.startsWith('consultation-') || appointment.meetingUrl?.startsWith('https://meet.jit.si/');
   const isLegacyJitsi = appointment.meetingUrl?.startsWith('https://meet.jit.si/');
@@ -151,17 +152,36 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
   // Doctor can rejoin if already started and session not ended
   const canRejoinCall = hasDoctorJoined && !hasDoctorLeft && !isSessionEnded && isValidRoom;
 
-  const [showCall, setShowCall] = useState(false);
+  // Derive showCall from context: connected AND for THIS appointment
+  const showCall = callSession.isConnected && callSession.activeAppointmentId === appointment.id;
 
-  // E2EE negotiation state
-  const [callToken, setCallToken] = useState<string | null>(null);
-  const [e2eeKey, setE2eeKey] = useState<string | null>(null);
-  const [sessionE2ee, setSessionE2ee] = useState(false);
+  // Attach the persistent VideoConference portal host into our slot container
+  useEffect(() => {
+    const slot = videoSlotRef.current;
+    const host = callSession.videoPortalHost;
+    if (slot && host && showCall) {
+      host.className = 'h-full';
+      slot.appendChild(host);
+      return () => { host.remove(); };
+    }
+  }, [callSession.videoPortalHost, showCall]);
+
+  // E2EE negotiation state (only e2eeResolved + patientReady remain local — they're per-appointment UI state)
   const [e2eeResolved, setE2eeResolved] = useState(false);
   // Tracks whether doctor manually left the call (prevents auto-rejoin)
   const [manuallyLeft, setManuallyLeft] = useState(false);
-  // Fix 15: patientReady state — patient has joined and E2EE is negotiated
+  // patientReady state — patient has joined and E2EE is negotiated
   const [patientReady, setPatientReady] = useState(false);
+
+  // Reset local state when context disconnects (e.g. network drop)
+  const prevShowCall = useRef(showCall);
+  useEffect(() => {
+    if (prevShowCall.current && !showCall) {
+      setManuallyLeft(true);
+      setPatientReady(false);
+    }
+    prevShowCall.current = showCall;
+  }, [showCall]);
 
   // Engine phase for UI rendering (single source of truth)
   const enginePhase = getSessionPhase(appointment, now, { isInCall: showCall }).phase;
@@ -169,9 +189,9 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
   // Auto-rejoin: triggered when navigating from Dashboard/Appointments with ?action=rejoin
   const autoRejoinTriggered = useRef(false);
 
-  // Fix 12: styled end-session modal
+  // Styled end-session modal
   const [showEndConfirm, setShowEndConfirm] = useState(false);
-  // Fix 15: refund-aware cancel modal
+  // Refund-aware cancel modal
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
@@ -189,13 +209,13 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
     ? `anon:${appointment.id}`
     : userId;
 
-  // Fix 10: Real document count
+  // Real document count
   const { notes: patientNotes } = usePatientNotes(specialist?.id ?? '', patientKey);
   const { documents: patientDocuments } = usePatientDocuments(specialist?.id ?? '', patientKey);
   const sessionNotes = patientNotes.filter(n => n.appointmentId === appointment.id);
   const sessionDocuments = patientDocuments.filter(d => d.appointmentId === appointment.id);
 
-  // Fetch token with E2EE config from Cloud Function
+  // Fetch token with E2EE config from Cloud Function — now calls context's startCall
   const fetchTokenWithE2EE = useCallback(async (useE2EE: boolean) => {
     if (!specialist || !appointment.meetingUrl) return;
     try {
@@ -207,15 +227,18 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
         e2eeEnabled: useE2EE,
       });
       const data = result.data as { token: string; e2eeKey?: string };
-      setCallToken(data.token);
-      setE2eeKey(data.e2eeKey ?? null);
-      setSessionE2ee(useE2EE);
       setPatientReady(true);
-      setShowCall(true);
+      await callSession.startCall({
+        appointmentId: appointment.id,
+        appointment,
+        token: data.token,
+        e2eeKey: data.e2eeKey,
+        sessionE2ee: useE2EE,
+      });
     } catch (err) {
       console.error('Failed to fetch call token:', err);
     }
-  }, [specialist, appointment.meetingUrl]);
+  }, [specialist, appointment, callSession]);
 
   // Listen for patient's E2EE capability (sessionE2ee field) after doctor opens room
   useEffect(() => {
@@ -258,7 +281,7 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
     }
   };
 
-  // Fix 15: Start session sets status to inProgress
+  // Start session sets status to inProgress
   const handleStartSession = async () => {
     if (appointment.sessionE2ee !== undefined && appointment.sessionE2ee !== null) {
       try {
@@ -285,12 +308,12 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
     }
   }, [autoAction, enginePhase, showCall]);
 
-  // Fix 12: styled end session
+  // End session — calls context's endCall
   const handleEndSession = async () => {
     setEnding(true);
     try {
       await markDoctorLeft(userId, appointment.id);
-      setShowCall(false);
+      callSession.endCall();
       setShowEndConfirm(false);
     } catch (err) {
       console.error('Failed to end session:', err);
@@ -299,7 +322,7 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
     }
   };
 
-  // Fix 15: Refund-aware cancel
+  // Refund-aware cancel
   const isPaid = appointment.paymentStatus === 'success';
   const willRefund = isPaid && (!hasDoctorJoined || patientReady);
 
@@ -354,7 +377,7 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
         )}
       </div>
 
-      {/* Post-Session Summary (Fix 10: real document count) */}
+      {/* Post-Session Summary */}
       {isSessionEnded && (
         <>
           <PostSessionSummary
@@ -371,38 +394,23 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
         </>
       )}
 
-      {/* Embedded LiveKit Call */}
-      {showCall && !isLegacyJitsi && appointment.meetingUrl && specialist && callToken && (
+      {/* Embedded LiveKit Call — VideoConference rendered via portal host from provider */}
+      {showCall && !isLegacyJitsi && appointment.meetingUrl && specialist && callSession.callToken && (
         <div className="mb-6 rounded-2xl overflow-hidden border border-slate-200 relative" style={{ height: '500px' }}>
-          {sessionE2ee && (
+          {callSession.sessionE2ee && (
             <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-600/90 text-white text-xs font-medium backdrop-blur-sm">
               <Shield className="w-3.5 h-3.5" />
               End-to-End Encrypted
             </div>
           )}
-          <LiveKitCall
-            roomName={appointment.meetingUrl}
-            participantName={specialist.name}
-            isAudio={isAudio}
-            onDisconnected={() => {
-              setShowCall(false);
-              setManuallyLeft(true);
-              // Fix 1: Reset state on disconnect
-              setPatientReady(false);
-              setCallToken(null);
-              setE2eeKey(null);
-            }}
-            token={callToken}
-            e2eeEnabled={sessionE2ee}
-            e2eeKey={e2eeKey ?? undefined}
-          />
+          <div ref={videoSlotRef} className="h-full rounded-xl overflow-hidden" />
         </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Session Controls + Patient Info */}
         <div className="lg:col-span-1 space-y-4">
-          {/* Session Controls Card (Fix 6: unified) */}
+          {/* Session Controls Card */}
           <div className={`p-5 rounded-2xl border ${
             enginePhase === 'roomOpen'
               ? 'bg-blue-50 border-blue-200 ring-1 ring-blue-200/40'
@@ -440,7 +448,7 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
               </button>
             )}
 
-            {/* Waiting for Patient (Fix 6: styled blue card) */}
+            {/* Waiting for Patient */}
             {enginePhase === 'roomOpen' && !showCall && (
               <div>
                 <div className="flex items-center gap-3 mb-3">
@@ -452,7 +460,7 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
               </div>
             )}
 
-            {/* Patient Ready — Start Session (Fix 6: styled emerald card) */}
+            {/* Patient Ready — Start Session */}
             {enginePhase === 'patientReady' && !showCall && (
               <div>
                 <div className="flex items-center gap-3 mb-3">
@@ -470,7 +478,7 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
               </div>
             )}
 
-            {/* Rejoin Call (Fix 1: shows after disconnect) */}
+            {/* Rejoin Call (shows after disconnect) */}
             {enginePhase === 'disconnected' && !showCall && (
               isLegacyJitsi ? (
                 <a
@@ -502,7 +510,7 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
               </div>
             )}
 
-            {/* Not yet in join window (Fix 16: dynamic countdown) */}
+            {/* Not yet in join window */}
             {(enginePhase === 'idle' || enginePhase === 'approaching') && !showCall && (
               <div className="flex items-center gap-2 text-sm text-amber-600">
                 <AlertCircle className="w-4 h-4" />
@@ -512,7 +520,7 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
               </div>
             )}
 
-            {/* Fix 15: Cancel Appointment — only before session starts (status still confirmed) */}
+            {/* Cancel Appointment — only before session starts (status still confirmed) */}
             {!isSessionEnded && appointment.status === 'confirmed' && (
               <button
                 onClick={() => setShowCancelConfirm(true)}
@@ -522,7 +530,7 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
               </button>
             )}
 
-            {/* Fix 15: End Session — only after session has started (status is inProgress) */}
+            {/* End Session — only after session has started (status is inProgress) */}
             {!isSessionEnded && appointment.status === 'inProgress' && (
               <button
                 onClick={() => setShowEndConfirm(true)}
@@ -588,7 +596,7 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
         </div>
       </div>
 
-      {/* Fix 12: Styled End Session Confirmation Modal */}
+      {/* Styled End Session Confirmation Modal */}
       {showEndConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <motion.div
@@ -619,7 +627,7 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
         </div>
       )}
 
-      {/* Fix 15: Refund-Aware Cancel Confirmation Modal */}
+      {/* Refund-Aware Cancel Confirmation Modal */}
       {showCancelConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <motion.div
