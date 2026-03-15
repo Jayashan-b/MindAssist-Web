@@ -1,15 +1,17 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { Upload, FileText, Trash2, Loader2, Download, Share2 } from 'lucide-react';
+import { Upload, FileText, Trash2, Loader2, Download, Share2, X } from 'lucide-react';
 import type { PatientDocument } from '@/lib/types';
 
 interface PatientDocumentUploaderProps {
   documents: PatientDocument[];
   uploading: boolean;
+  error?: string | null;
   onUpload: (file: File, description?: string) => Promise<void>;
   onRemove: (doc: PatientDocument) => Promise<void>;
   onToggleShare: (doc: PatientDocument, shared: boolean) => Promise<void>;
+  onClearError?: () => void;
 }
 
 function formatBytes(bytes: number): string {
@@ -23,9 +25,11 @@ function formatBytes(bytes: number): string {
 export default function PatientDocumentUploader({
   documents,
   uploading,
+  error,
   onUpload,
   onRemove,
   onToggleShare,
+  onClearError,
 }: PatientDocumentUploaderProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [description, setDescription] = useState('');
@@ -87,6 +91,18 @@ export default function PatientDocumentUploader({
           />
         </div>
       </div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
+          <p className="flex-1 text-xs text-red-700">{error}</p>
+          {onClearError && (
+            <button onClick={onClearError} className="p-0.5 text-red-400 hover:text-red-600 rounded transition-colors">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Document list */}
       {documents.length > 0 && (

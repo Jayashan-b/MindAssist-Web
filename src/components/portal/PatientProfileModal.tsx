@@ -36,7 +36,7 @@ export default function PatientProfileModal({
   // For anonymous patients, use profileKey (anon:{appointmentId}) to isolate notes/docs per session
   const notesKey = patient.isAnonymous ? patient.profileKey : patient.userId;
   const { notes, loading: notesLoading, addNote, editNote, removeNote, toggleSharing: toggleNoteSharing } = usePatientNotes(specialistId, notesKey);
-  const { documents, loading: docsLoading, uploading, uploadDocument, removeDocument, toggleSharing: toggleDocSharing } = usePatientDocuments(specialistId, notesKey);
+  const { documents, loading: docsLoading, uploading, error: docError, clearError: clearDocError, uploadDocument, removeDocument, toggleSharing: toggleDocSharing } = usePatientDocuments(specialistId, notesKey);
   const { uploads } = usePatientUploads(specialistId, patient.isAnonymous ? undefined : patient.userId);
   const { message: patientMessage } = usePatientMessage(specialistId, patient.isAnonymous ? undefined : patient.userId);
 
@@ -357,9 +357,11 @@ export default function PatientProfileModal({
                 <PatientDocumentUploader
                   documents={documents}
                   uploading={uploading}
+                  error={docError}
                   onUpload={uploadDocument}
                   onRemove={removeDocument}
                   onToggleShare={(doc, shared) => toggleDocSharing(doc.id, shared)}
+                  onClearError={clearDocError}
                 />
               )}
 

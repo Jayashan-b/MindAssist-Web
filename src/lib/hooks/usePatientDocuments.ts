@@ -11,10 +11,13 @@ import {
 } from '../firestore';
 import type { PatientDocument } from '../types';
 
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
 export function usePatientDocuments(specialistId: string | undefined, patientUserId: string | undefined) {
   const [documents, setDocuments] = useState<PatientDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!specialistId || !patientUserId) {
@@ -32,10 +35,19 @@ export function usePatientDocuments(specialistId: string | undefined, patientUse
     return unsubscribe;
   }, [specialistId, patientUserId]);
 
+  const clearError = useCallback(() => setError(null), []);
+
   const uploadDocument = useCallback(
     async (file: File, description?: string, appointmentId?: string) => {
       if (!specialistId || !patientUserId) return;
+
+      if (file.size > MAX_FILE_SIZE) {
+        setError('File too large. Maximum size is 10 MB.');
+        return;
+      }
+
       setUploading(true);
+      setError(null);
       try {
         const timestamp = Date.now();
         const storagePath = `specialists/${specialistId}/patients/${patientUserId}/${timestamp}_${file.name}`;
@@ -52,7 +64,12 @@ export function usePatientDocuments(specialistId: string | undefined, patientUse
           uploadedAt: new Date().toISOString(),
           description: description ?? null,
           appointmentId: appointmentId ?? null,
+          sharedWithPatient: false,
         });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Upload failed. Please try again.';
+        setError(message);
+        console.error('Document upload failed:', err);
       } finally {
         setUploading(false);
       }
@@ -83,5 +100,5 @@ export function usePatientDocuments(specialistId: string | undefined, patientUse
     [specialistId],
   );
 
-  return { documents, loading, uploading, uploadDocument, removeDocument, toggleSharing };
+  return { documents, loading, uploading, error, clearError, uploadDocument, removeDocument, toggleSharing };
 }

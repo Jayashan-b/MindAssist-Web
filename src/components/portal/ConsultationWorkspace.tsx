@@ -52,7 +52,7 @@ export default function ConsultationWorkspace({
   const [deletingNote, setDeletingNote] = useState<string | null>(null);
 
   const { notes, loading: notesLoading, addNote, editNote, removeNote, toggleSharing: toggleNoteSharing } = usePatientNotes(specialistId, patientKey);
-  const { documents, loading: docsLoading, uploading, uploadDocument, removeDocument, toggleSharing: toggleDocSharing } = usePatientDocuments(specialistId, patientKey);
+  const { documents, loading: docsLoading, uploading, error: docError, clearError: clearDocError, uploadDocument, removeDocument, toggleSharing: toggleDocSharing } = usePatientDocuments(specialistId, patientKey);
   const { uploads } = usePatientUploads(specialistId, isAnonymous ? undefined : userId);
 
   // Filter patient history — other appointments with this patient (empty for anonymous)
@@ -213,9 +213,11 @@ export default function ConsultationWorkspace({
               <PatientDocumentUploader
                 documents={documents}
                 uploading={uploading}
+                error={docError}
                 onUpload={uploadDocument}
                 onRemove={removeDocument}
                 onToggleShare={(doc, shared) => toggleDocSharing(doc.id, shared)}
+                onClearError={clearDocError}
               />
             )}
 
