@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Video, Phone, Calendar, Clock, AlertCircle, CheckCircle2, Loader2, XCircle, Ban } from 'lucide-react';
-import { format, differenceInMinutes } from 'date-fns';
+import { Video, Phone, Calendar, Clock, Loader2, XCircle, Ban, CheckCircle2 } from 'lucide-react';
+import { format } from 'date-fns';
 import Link from 'next/link';
 import type { Appointment } from '@/lib/types';
-import { APPOINTMENT_STATUS_LABELS, APPOINTMENT_STATUS_COLORS, JOIN_WINDOW_MINUTES } from '@/lib/types';
 import { markDoctorJoined } from '@/lib/firestore';
 import { supportsE2EE } from '@/lib/e2ee';
+import { getSessionPhase, getCardBackground } from '@/lib/consultation-session';
 import PatientAvatar from './PatientAvatar';
 import CancelAppointmentDialog from './CancelAppointmentDialog';
 
@@ -27,36 +27,17 @@ export default function AppointmentCard({ appointment, showJoinLink = true, onVi
     return () => clearInterval(interval);
   }, []);
 
-  const scheduledDate = new Date(appointment.scheduledAt);
-  const isUpcoming = scheduledDate > now && appointment.status === 'confirmed';
+  const { phase, badge, primaryAction, canCancel } = getSessionPhase(appointment, now);
+
   const displayName = appointment.anonymousMode
     ? appointment.anonymousAlias || 'Anonymous'
     : appointment.patientName || 'Patient';
 
-  // Join window: JOIN_WINDOW_MINUTES before to (duration + JOIN_WINDOW_MINUTES) after scheduled time
-  const minutesBefore = differenceInMinutes(scheduledDate, now);
-  const minutesAfter = differenceInMinutes(now, scheduledDate);
-  const duration = appointment.durationMinutes || 30;
-  const isWithinJoinWindow = minutesBefore <= JOIN_WINDOW_MINUTES && minutesAfter <= (duration + JOIN_WINDOW_MINUTES);
-
-  const hasDoctorJoined = !!appointment.doctorJoinedAt;
-  const hasDoctorLeft = !!appointment.doctorLeftAt;
-  const isSessionEnded = appointment.status === 'completed' || appointment.status === 'rated';
   const isCancelled = appointment.status === 'cancelled';
-
-  const canStartMeeting = !hasDoctorJoined && !isSessionEnded && isWithinJoinWindow &&
-    (appointment.status === 'confirmed' || appointment.status === 'inProgress');
-
-  const isValidRoom = appointment.meetingUrl?.startsWith('consultation-') || appointment.meetingUrl?.startsWith('https://meet.jit.si/');
-  const canRejoinCall = hasDoctorJoined && !hasDoctorLeft && !isSessionEnded && isValidRoom;
-
-  const isApproaching = minutesBefore > 0 && minutesBefore <= 60 && !isWithinJoinWindow &&
-    (appointment.status === 'confirmed' || appointment.status === 'inProgress');
-
-  const canCancel = appointment.status === 'confirmed' || appointment.status === 'pending' || appointment.status === 'pendingPayment';
-
+  const isSessionEnded = appointment.status === 'completed' || appointment.status === 'rated';
   const isAudio = appointment.consultationType === 'audio';
   const CallIcon = isAudio ? Phone : Video;
+  const scheduledDate = new Date(appointment.scheduledAt);
 
   const handleStartMeeting = async () => {
     setStarting(true);
@@ -71,20 +52,9 @@ export default function AppointmentCard({ appointment, showJoinLink = true, onVi
 
   return (
     <>
-      <div className={`p-4 rounded-xl border transition-all ${
-        canRejoinCall
-          ? 'bg-emerald-50/50 border-emerald-200/60 shadow-sm ring-1 ring-emerald-200/40'
-          : canStartMeeting
-            ? 'bg-violet-50/50 border-violet-200/60 shadow-sm ring-1 ring-violet-200/40'
-            : isUpcoming
-              ? 'bg-violet-50/50 border-violet-200/60 shadow-sm'
-              : isCancelled
-                ? 'bg-red-50/30 border-red-200/40'
-                : 'bg-white border-slate-200/60 hover:border-slate-300'
-      }`}>
+      <div className={`p-4 rounded-xl border transition-all ${getCardBackground(phase)}`}>
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-3">
-            {/* Patient Avatar */}
             <PatientAvatar
               name={displayName}
               isAnonymous={appointment.anonymousMode}
@@ -92,8 +62,16 @@ export default function AppointmentCard({ appointment, showJoinLink = true, onVi
 
             <div>
               <div className="flex items-center gap-2">
-                <p className="font-semibold text-sm text-slate-800">{displayName}</p>
-                {/* Call type badge */}
+                {onViewPatient ? (
+                  <button
+                    onClick={() => onViewPatient(appointment.userId)}
+                    className="font-semibold text-sm text-violet-600 hover:text-violet-700 hover:underline transition-colors text-left"
+                  >
+                    {displayName}
+                  </button>
+                ) : (
+                  <p className="font-semibold text-sm text-slate-800">{displayName}</p>
+                )}
                 <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${
                   isAudio ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'
                 }`}>
@@ -117,19 +95,11 @@ export default function AppointmentCard({ appointment, showJoinLink = true, onVi
             </div>
           </div>
 
-          {/* Status + Actions */}
+          {/* Status badge */}
           <div className="flex flex-col items-end gap-1">
-            <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${
-              APPOINTMENT_STATUS_COLORS[appointment.status]
-            }`}>
-              {APPOINTMENT_STATUS_LABELS[appointment.status]}
+            <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${badge.className}`}>
+              {badge.text}
             </span>
-            {hasDoctorJoined && !isSessionEnded && (
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-emerald-100 text-emerald-700 font-medium">
-                <CheckCircle2 className="w-3 h-3" />
-                Meeting Started
-              </span>
-            )}
           </div>
         </div>
 
@@ -151,68 +121,70 @@ export default function AppointmentCard({ appointment, showJoinLink = true, onVi
           </div>
         )}
 
-        {/* Approaching indicator */}
-        {isApproaching && showJoinLink && (
+        {/* Primary Action Section — full-width button with context text */}
+        {primaryAction && showJoinLink && (
           <div className="mt-3 pt-3 border-t border-slate-100">
-            <p className="flex items-center gap-2 text-xs text-amber-600 font-medium">
-              <AlertCircle className="w-3.5 h-3.5" />
-              Starts in {minutesBefore} minute{minutesBefore !== 1 ? 's' : ''} — join window opens in {minutesBefore - JOIN_WINDOW_MINUTES} min
-            </p>
+            {phase === 'roomOpen' && (
+              <p className="text-xs text-blue-600 font-medium mb-2">Waiting for patient to join...</p>
+            )}
+            {phase === 'patientReady' && (
+              <p className="text-xs text-emerald-600 font-medium mb-2">Patient has joined — start when ready</p>
+            )}
+            {phase === 'disconnected' && (
+              <p className="text-xs text-red-600 font-medium mb-2">Session interrupted — reconnect to continue</p>
+            )}
+
+            {primaryAction.action === 'openRoom' ? (
+              <button
+                onClick={handleStartMeeting}
+                disabled={starting}
+                className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-medium transition-colors shadow-sm disabled:opacity-50 ${primaryAction.className}`}
+              >
+                {starting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CallIcon className="w-4 h-4" />}
+                {starting ? 'Opening Room...' : primaryAction.label}
+              </button>
+            ) : (
+              <Link
+                href={primaryAction.href ?? `/portal/consultation?appointmentId=${appointment.id}`}
+                className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-medium transition-colors shadow-sm ${primaryAction.className}`}
+              >
+                <CallIcon className="w-4 h-4" />
+                {primaryAction.label}
+              </Link>
+            )}
+
+            {canCancel && (
+              <button
+                onClick={() => setShowCancel(true)}
+                className="mt-2 flex items-center justify-center gap-1.5 w-full py-2 rounded-xl text-xs font-medium border border-red-200 text-red-500 hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                Cancel Appointment
+              </button>
+            )}
           </div>
         )}
 
-        {/* Open Room Button */}
-        {canStartMeeting && showJoinLink && (
-          <div className="mt-3 pt-3 border-t border-violet-100 flex items-center gap-3">
+        {/* Cancel-only section (no primary action but can still cancel) */}
+        {!primaryAction && !isCancelled && phase !== 'ended' && phase !== 'noShow' && canCancel && (
+          <div className="mt-3 pt-3 border-t border-slate-100">
             <button
-              onClick={handleStartMeeting}
-              disabled={starting}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 transition-colors shadow-sm disabled:opacity-50"
+              onClick={() => setShowCancel(true)}
+              className="flex items-center justify-center gap-1.5 w-full py-2 rounded-xl text-xs font-medium border border-red-200 text-red-500 hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors"
             >
-              {starting ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <CallIcon className="w-4 h-4" />
-              )}
-              {starting ? 'Opening...' : 'Open Room'}
+              <XCircle className="w-3.5 h-3.5" />
+              Cancel Appointment
             </button>
           </div>
         )}
 
-        {/* Rejoin Call */}
-        {canRejoinCall && showJoinLink && (
-          <div className="mt-3 pt-3 border-t border-emerald-100 flex items-center gap-3">
-            <Link
-              href={`/portal/consultation?appointmentId=${appointment.id}`}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition-colors shadow-sm"
-            >
-              <CallIcon className="w-4 h-4" />
-              Rejoin {isAudio ? 'Audio' : 'Video'} Call
-            </Link>
-          </div>
-        )}
-
-        {/* Action buttons row (View Patient + Cancel) */}
-        {!canStartMeeting && !canRejoinCall && !isCancelled && !isSessionEnded && (
-          <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-2">
-            {onViewPatient && (
-              <button
-                onClick={() => onViewPatient(appointment.userId)}
-                className="text-xs font-medium text-violet-600 hover:text-violet-700 transition-colors"
-              >
-                View Patient
-              </button>
-            )}
-            {canCancel && onViewPatient && <span className="text-slate-200">|</span>}
-            {canCancel && (
-              <button
-                onClick={() => setShowCancel(true)}
-                className="flex items-center gap-1 text-xs font-medium text-red-500 hover:text-red-600 transition-colors"
-              >
-                <XCircle className="w-3 h-3" />
-                Cancel
-              </button>
-            )}
+        {/* Approaching indicator */}
+        {phase === 'approaching' && showJoinLink && (
+          <div className="mt-3 pt-3 border-t border-slate-100">
+            <p className="flex items-center gap-2 text-xs text-amber-600 font-medium">
+              <Clock className="w-3.5 h-3.5" />
+              {badge.text}
+            </p>
           </div>
         )}
 
@@ -233,7 +205,6 @@ export default function AppointmentCard({ appointment, showJoinLink = true, onVi
         )}
       </div>
 
-      {/* Cancel Dialog */}
       <CancelAppointmentDialog
         open={showCancel}
         onClose={() => setShowCancel(false)}

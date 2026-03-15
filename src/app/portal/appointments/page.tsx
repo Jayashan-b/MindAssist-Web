@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { ClipboardList, Search } from 'lucide-react';
 import AuthGuard from '@/components/portal/AuthGuard';
@@ -10,6 +10,9 @@ import SessionNotificationBanner from '@/components/portal/SessionNotificationBa
 import { useAuth } from '@/lib/hooks/useAuth';
 import { useAppointments, isStaleInProgress } from '@/lib/hooks/useAppointments';
 import { useSessionNotifications } from '@/lib/hooks/useSessionNotifications';
+import { usePatients } from '@/lib/hooks/usePatients';
+import PatientProfileModal from '@/components/portal/PatientProfileModal';
+import type { PatientProfile } from '@/lib/types';
 
 type TabFilter = 'all' | 'upcoming' | 'inProgress' | 'completed' | 'cancelled';
 type SortOrder = 'smart' | 'newest' | 'oldest';
@@ -37,6 +40,14 @@ function AppointmentsContent() {
   const { specialist } = useAuth();
   const { appointments, upcoming, completed, cancelled, inProgress, loading } = useAppointments(specialist?.id);
   const { approachingSessions } = useSessionNotifications(appointments);
+  const { patients } = usePatients(appointments);
+  const [selectedPatient, setSelectedPatient] = useState<PatientProfile | null>(null);
+
+  const handleViewPatient = useCallback((userId: string) => {
+    const match = patients.find((p) => p.userId === userId);
+    if (match) setSelectedPatient(match);
+  }, [patients]);
+
   const [tab, setTab] = useState<TabFilter>('all');
   const [search, setSearch] = useState('');
   const [sortOrder, setSortOrder] = useState<SortOrder>('smart');
@@ -187,11 +198,19 @@ function AppointmentsContent() {
             ) : (
               <div className="space-y-3">
                 {filteredAppointments.map((apt) => (
-                  <AppointmentCard key={apt.id} appointment={apt} />
+                  <AppointmentCard key={apt.id} appointment={apt} onViewPatient={handleViewPatient} />
                 ))}
               </div>
             )}
           </div>
+          {selectedPatient && (
+            <PatientProfileModal
+              open={!!selectedPatient}
+              onClose={() => setSelectedPatient(null)}
+              patient={selectedPatient}
+              specialistId={specialist?.id}
+            />
+          )}
         </motion.div>
       </main>
     </div>

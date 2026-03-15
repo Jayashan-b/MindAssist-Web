@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   CalendarCheck,
@@ -20,6 +20,9 @@ import SessionNotificationBanner from '@/components/portal/SessionNotificationBa
 import { useAuth } from '@/lib/hooks/useAuth';
 import { useAppointments } from '@/lib/hooks/useAppointments';
 import { useSessionNotifications } from '@/lib/hooks/useSessionNotifications';
+import { usePatients } from '@/lib/hooks/usePatients';
+import PatientProfileModal from '@/components/portal/PatientProfileModal';
+import type { PatientProfile } from '@/lib/types';
 
 export default function DashboardPage() {
   return (
@@ -33,6 +36,13 @@ function DashboardContent() {
   const { specialist } = useAuth();
   const { appointments, upcoming, completed, paid, uniquePatientCount, loading } = useAppointments(specialist?.id);
   const { approachingSessions } = useSessionNotifications(appointments);
+  const { patients } = usePatients(appointments);
+  const [selectedPatient, setSelectedPatient] = useState<PatientProfile | null>(null);
+
+  const handleViewPatient = useCallback((userId: string) => {
+    const match = patients.find((p) => p.userId === userId);
+    if (match) setSelectedPatient(match);
+  }, [patients]);
 
   const [now, setNow] = useState(new Date());
   useEffect(() => {
@@ -125,7 +135,7 @@ function DashboardContent() {
               </div>
               <div className="space-y-3">
                 {activeSessions.map((apt) => (
-                  <AppointmentCard key={apt.id} appointment={apt} />
+                  <AppointmentCard key={apt.id} appointment={apt} onViewPatient={handleViewPatient} />
                 ))}
               </div>
             </div>
@@ -161,7 +171,7 @@ function DashboardContent() {
             ) : (
               <div className="space-y-3">
                 {upcoming.slice(0, 5).map((apt) => (
-                  <AppointmentCard key={apt.id} appointment={apt} />
+                  <AppointmentCard key={apt.id} appointment={apt} onViewPatient={handleViewPatient} />
                 ))}
               </div>
             )}
@@ -188,6 +198,14 @@ function DashboardContent() {
                 </Link>
               </div>
             </div>
+          )}
+          {selectedPatient && (
+            <PatientProfileModal
+              open={!!selectedPatient}
+              onClose={() => setSelectedPatient(null)}
+              patient={selectedPatient}
+              specialistId={specialist?.id}
+            />
           )}
         </motion.div>
       </main>

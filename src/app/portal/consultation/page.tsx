@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
@@ -36,6 +36,7 @@ import { supportsE2EE } from '@/lib/e2ee';
 import { usePatientNotes } from '@/lib/hooks/usePatientNotes';
 import type { Appointment } from '@/lib/types';
 import { JOIN_WINDOW_MINUTES } from '@/lib/types';
+import { getSessionPhase } from '@/lib/consultation-session';
 
 export default function ConsultationPage() {
   return (
@@ -104,7 +105,7 @@ function ConsultationContent() {
     <div className="flex min-h-screen bg-slate-50">
       <PortalSidebar />
       <main className="flex-1 p-8">
-        <ConsultationView appointment={appointment} userId={userId} specialist={specialist} appointments={appointments} />
+        <ConsultationView appointment={appointment} userId={userId} specialist={specialist} appointments={appointments} autoAction={searchParams.get('action')} />
       </main>
     </div>
   );
@@ -115,9 +116,10 @@ interface ConsultationViewProps {
   userId: string;
   specialist: { id: string; name: string; authUid: string } | null;
   appointments: Appointment[];
+  autoAction?: string | null;
 }
 
-function ConsultationView({ appointment, userId, specialist, appointments }: ConsultationViewProps) {
+function ConsultationView({ appointment, userId, specialist, appointments, autoAction }: ConsultationViewProps) {
   const [now, setNow] = useState(new Date());
   const [ending, setEnding] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -160,6 +162,12 @@ function ConsultationView({ appointment, userId, specialist, appointments }: Con
   const [manuallyLeft, setManuallyLeft] = useState(false);
   // Fix 15: patientReady state — patient has joined and E2EE is negotiated
   const [patientReady, setPatientReady] = useState(false);
+
+  // Engine phase for UI rendering (single source of truth)
+  const enginePhase = getSessionPhase(appointment, now, { isInCall: showCall }).phase;
+
+  // Auto-rejoin: triggered when navigating from Dashboard/Appointments with ?action=rejoin
+  const autoRejoinTriggered = useRef(false);
 
   // Fix 12: styled end-session modal
   const [showEndConfirm, setShowEndConfirm] = useState(false);
@@ -269,6 +277,14 @@ function ConsultationView({ appointment, userId, specialist, appointments }: Con
     }
   };
 
+  // Auto-rejoin effect: when arriving with ?action=rejoin and session is disconnected
+  useEffect(() => {
+    if (autoAction === 'rejoin' && !autoRejoinTriggered.current && enginePhase === 'disconnected' && !showCall) {
+      autoRejoinTriggered.current = true;
+      handleRejoinSession();
+    }
+  }, [autoAction, enginePhase, showCall]);
+
   // Fix 12: styled end session
   const handleEndSession = async () => {
     setEnding(true);
@@ -331,9 +347,9 @@ function ConsultationView({ appointment, userId, specialist, appointments }: Con
             In Session
           </span>
         )}
-        {canRejoinCall && !showCall && !isSessionEnded && !waitingForPatient && !patientReady && (
-          <span className="ml-auto px-3 py-1 rounded-lg text-xs font-semibold bg-violet-100 text-violet-700">
-            Session Started
+        {enginePhase === 'disconnected' && !showCall && (
+          <span className="ml-auto px-3 py-1 rounded-lg text-xs font-semibold bg-red-100 text-red-700">
+            Reconnect
           </span>
         )}
       </div>
@@ -388,21 +404,21 @@ function ConsultationView({ appointment, userId, specialist, appointments }: Con
         <div className="lg:col-span-1 space-y-4">
           {/* Session Controls Card (Fix 6: unified) */}
           <div className={`p-5 rounded-2xl border ${
-            waitingForPatient
-              ? 'bg-amber-50 border-amber-200 ring-1 ring-amber-200/40'
-              : patientReady && !showCall
+            enginePhase === 'roomOpen'
+              ? 'bg-blue-50 border-blue-200 ring-1 ring-blue-200/40'
+              : enginePhase === 'patientReady'
                 ? 'bg-emerald-50 border-emerald-200 ring-1 ring-emerald-200/40'
-                : canRejoinCall && !showCall && !waitingForPatient
-                  ? 'bg-emerald-50 border-emerald-200 ring-1 ring-emerald-200/40'
-                  : canOpenRoom
+                : enginePhase === 'disconnected'
+                  ? 'bg-red-50 border-red-200 ring-1 ring-red-200/40'
+                  : enginePhase === 'canOpenRoom'
                     ? 'bg-violet-50 border-violet-200 ring-1 ring-violet-200/40'
                     : 'bg-white border-slate-200'
           }`}>
             <div className="flex items-center gap-2 mb-3">
               <CallIcon className={`w-5 h-5 ${
-                waitingForPatient ? 'text-amber-600'
-                : patientReady || canRejoinCall ? 'text-emerald-600'
-                : canOpenRoom ? 'text-violet-600'
+                enginePhase === 'roomOpen' ? 'text-blue-600'
+                : enginePhase === 'patientReady' || enginePhase === 'disconnected' ? 'text-emerald-600'
+                : enginePhase === 'canOpenRoom' ? 'text-violet-600'
                 : 'text-slate-400'
               }`} />
               <h3 className="font-semibold text-sm text-slate-800">Session Controls</h3>
@@ -424,20 +440,20 @@ function ConsultationView({ appointment, userId, specialist, appointments }: Con
               </button>
             )}
 
-            {/* Waiting for Patient (Fix 6: styled amber card) */}
-            {waitingForPatient && (
+            {/* Waiting for Patient (Fix 6: styled blue card) */}
+            {enginePhase === 'roomOpen' && !showCall && (
               <div>
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
-                  <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded">Room Open</span>
+                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                  <span className="text-xs font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">Room Open</span>
                 </div>
-                <p className="text-sm font-medium text-amber-800">Waiting for patient to join...</p>
-                <p className="text-xs text-amber-600 mt-1">The patient has been notified that the room is open</p>
+                <p className="text-sm font-medium text-blue-800">Waiting for patient to join...</p>
+                <p className="text-xs text-blue-600 mt-1">The patient has been notified that the room is open</p>
               </div>
             )}
 
             {/* Patient Ready — Start Session (Fix 6: styled emerald card) */}
-            {patientReady && !showCall && !manuallyLeft && (
+            {enginePhase === 'patientReady' && !showCall && (
               <div>
                 <div className="flex items-center gap-3 mb-3">
                   <UserCheck className="w-5 h-5 text-emerald-600" />
@@ -455,7 +471,7 @@ function ConsultationView({ appointment, userId, specialist, appointments }: Con
             )}
 
             {/* Rejoin Call (Fix 1: shows after disconnect) */}
-            {canRejoinCall && !showCall && !waitingForPatient && !patientReady && (
+            {enginePhase === 'disconnected' && !showCall && (
               isLegacyJitsi ? (
                 <a
                   href={appointment.meetingUrl!}
@@ -487,7 +503,7 @@ function ConsultationView({ appointment, userId, specialist, appointments }: Con
             )}
 
             {/* Not yet in join window (Fix 16: dynamic countdown) */}
-            {!canOpenRoom && !canRejoinCall && !isSessionEnded && !waitingForPatient && !patientReady && !showCall && (
+            {(enginePhase === 'idle' || enginePhase === 'approaching') && !showCall && (
               <div className="flex items-center gap-2 text-sm text-amber-600">
                 <AlertCircle className="w-4 h-4" />
                 {minutesBefore > JOIN_WINDOW_MINUTES
