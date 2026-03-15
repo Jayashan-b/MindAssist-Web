@@ -17,7 +17,9 @@ import PortalSidebar from '@/components/portal/PortalSidebar';
 import StatCard from '@/components/portal/StatCard';
 import AppointmentCard from '@/components/portal/AppointmentCard';
 import SessionNotificationBanner from '@/components/portal/SessionNotificationBanner';
+import ActiveSessionCard from '@/components/portal/ActiveSessionCard';
 import { useAuth } from '@/lib/hooks/useAuth';
+import { useCallSession } from '@/lib/hooks/useCallSession';
 import { useAppointments } from '@/lib/hooks/useAppointments';
 import { useSessionNotifications } from '@/lib/hooks/useSessionNotifications';
 import { usePatients } from '@/lib/hooks/usePatients';
@@ -34,15 +36,16 @@ export default function DashboardPage() {
 
 function DashboardContent() {
   const { specialist } = useAuth();
+  const callSession = useCallSession();
   const { appointments, upcoming, completed, paid, uniquePatientCount, loading } = useAppointments(specialist?.id);
   const { approachingSessions } = useSessionNotifications(appointments);
-  const { patients } = usePatients(appointments);
+  const { patients, getPatient } = usePatients(appointments);
   const [selectedPatient, setSelectedPatient] = useState<PatientProfile | null>(null);
 
-  const handleViewPatient = useCallback((userId: string) => {
-    const match = patients.find((p) => p.userId === userId);
+  const handleViewPatient = useCallback((profileKey: string) => {
+    const match = getPatient(profileKey);
     if (match) setSelectedPatient(match);
-  }, [patients]);
+  }, [getPatient]);
 
   const [now, setNow] = useState(new Date());
   useEffect(() => {
@@ -51,7 +54,9 @@ function DashboardContent() {
   }, []);
 
   // Active sessions: doctor joined and hasn't left, or within join window
+  // Exclude the currently connected appointment (shown in layout-level persistent banner)
   const activeSessions = appointments.filter((a) => {
+    if (callSession.isConnected && callSession.activeAppointmentId === a.id) return false;
     if (a.status !== 'confirmed' && a.status !== 'inProgress') return false;
     if (!a.meetingUrl?.startsWith('consultation-') && !a.meetingUrl?.startsWith('https://meet.jit.si/')) return false;
     // Active if doctor joined and hasn't left
@@ -89,8 +94,9 @@ function DashboardContent() {
             </p>
           </div>
 
-          {/* Session Notifications */}
+          {/* Approaching session notifications */}
           <SessionNotificationBanner sessions={approachingSessions} />
+          <ActiveSessionCard />
 
           {/* Stats Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -135,7 +141,12 @@ function DashboardContent() {
               </div>
               <div className="space-y-3">
                 {activeSessions.map((apt) => (
-                  <AppointmentCard key={apt.id} appointment={apt} onViewPatient={handleViewPatient} />
+                  <AppointmentCard
+                    key={apt.id}
+                    appointment={apt}
+                    onViewPatient={handleViewPatient}
+                    isStillConnected={callSession.isConnected && callSession.activeAppointmentId === apt.id}
+                  />
                 ))}
               </div>
             </div>
@@ -171,7 +182,12 @@ function DashboardContent() {
             ) : (
               <div className="space-y-3">
                 {upcoming.slice(0, 5).map((apt) => (
-                  <AppointmentCard key={apt.id} appointment={apt} onViewPatient={handleViewPatient} />
+                  <AppointmentCard
+                    key={apt.id}
+                    appointment={apt}
+                    onViewPatient={handleViewPatient}
+                    isStillConnected={callSession.isConnected && callSession.activeAppointmentId === apt.id}
+                  />
                 ))}
               </div>
             )}

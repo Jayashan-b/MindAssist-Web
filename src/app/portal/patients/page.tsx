@@ -11,6 +11,7 @@ import PatientProfileModal from '@/components/portal/PatientProfileModal';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { useAppointments } from '@/lib/hooks/useAppointments';
 import { usePatients } from '@/lib/hooks/usePatients';
+import ActiveSessionCard from '@/components/portal/ActiveSessionCard';
 import type { PatientProfile } from '@/lib/types';
 
 type Filter = 'all' | 'regular' | 'anonymous';
@@ -77,6 +78,8 @@ function PatientsContent() {
               View and manage your patient records
             </p>
           </div>
+
+          <ActiveSessionCard />
 
           {/* Search + Filters */}
           <div className="flex items-center gap-3 mb-4">

@@ -14,10 +14,11 @@ import CancelAppointmentDialog from './CancelAppointmentDialog';
 interface AppointmentCardProps {
   appointment: Appointment;
   showJoinLink?: boolean;
-  onViewPatient?: (userId: string) => void;
+  onViewPatient?: (profileKey: string) => void;
+  isStillConnected?: boolean;
 }
 
-export default function AppointmentCard({ appointment, showJoinLink = true, onViewPatient }: AppointmentCardProps) {
+export default function AppointmentCard({ appointment, showJoinLink = true, onViewPatient, isStillConnected = false }: AppointmentCardProps) {
   const [now, setNow] = useState(new Date());
   const [starting, setStarting] = useState(false);
   const [showCancel, setShowCancel] = useState(false);
@@ -27,7 +28,7 @@ export default function AppointmentCard({ appointment, showJoinLink = true, onVi
     return () => clearInterval(interval);
   }, []);
 
-  const { phase, badge, primaryAction, canCancel } = getSessionPhase(appointment, now);
+  const { phase, badge, primaryAction, canCancel } = getSessionPhase(appointment, now, { isStillConnected });
 
   const displayName = appointment.anonymousMode
     ? appointment.anonymousAlias || 'Anonymous'
@@ -64,7 +65,9 @@ export default function AppointmentCard({ appointment, showJoinLink = true, onVi
               <div className="flex items-center gap-2">
                 {onViewPatient ? (
                   <button
-                    onClick={() => onViewPatient(appointment.userId)}
+                    onClick={() => onViewPatient(
+                      appointment.anonymousMode ? `anon:${appointment.id}` : appointment.userId
+                    )}
                     className="font-semibold text-sm text-violet-600 hover:text-violet-700 hover:underline transition-colors text-left"
                   >
                     {displayName}
@@ -122,7 +125,8 @@ export default function AppointmentCard({ appointment, showJoinLink = true, onVi
         )}
 
         {/* Primary Action Section — full-width button with context text */}
-        {primaryAction && showJoinLink && (
+        {/* Skip for activeElsewhere — the ActiveSessionCard banner handles "Return to Session" */}
+        {primaryAction && showJoinLink && phase !== 'activeElsewhere' && (
           <div className="mt-3 pt-3 border-t border-slate-100">
             {phase === 'roomOpen' && (
               <p className="text-xs text-blue-600 font-medium mb-2">Waiting for patient to join...</p>
