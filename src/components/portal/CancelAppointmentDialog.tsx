@@ -28,7 +28,7 @@ export default function CancelAppointmentDialog({
     if (!reason.trim()) return;
     setSubmitting(true);
     try {
-      await cancelAppointmentByDoctor(userId, appointmentId, reason.trim());
+      await cancelAppointmentByDoctor(userId, appointmentId, reason.trim(), true);
       onClose();
     } catch (err) {
       console.error('Failed to cancel appointment:', err);

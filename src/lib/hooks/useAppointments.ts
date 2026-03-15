@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
-import { watchAppointmentsForSpecialist } from '../firestore';
+import { useEffect, useState, useMemo, useRef } from 'react';
+import { watchAppointmentsForSpecialist, cancelAppointmentByDoctor } from '../firestore';
 import type { Appointment } from '../types';
+import { getNoShowAppointments } from '../consultation-session';
 
 /**
  * An inProgress appointment is considered stale if the scheduled time
@@ -35,6 +36,26 @@ export function useAppointments(specialistId: string | undefined) {
     return unsubscribe;
   }, [specialistId]);
 
+  // Auto-cancel no-show appointments (doctor never joined within session window)
+  const cancelledNoShowsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (loading || appointments.length === 0) return;
+    const noShows = getNoShowAppointments(appointments, new Date());
+    for (const apt of noShows) {
+      if (cancelledNoShowsRef.current.has(apt.id)) continue;
+      cancelledNoShowsRef.current.add(apt.id);
+      cancelAppointmentByDoctor(
+        apt.userId,
+        apt.id,
+        'Session expired — doctor did not join within the scheduled time',
+        true,
+      ).catch((err) => {
+        console.error('Failed to auto-cancel no-show:', err);
+        cancelledNoShowsRef.current.delete(apt.id);
+      });
+    }
+  }, [appointments, loading]);
+
   const upcoming = appointments.filter(
     (a) => a.status === 'confirmed' && new Date(a.scheduledAt) > new Date(),
   );
@@ -50,7 +71,10 @@ export function useAppointments(specialistId: string | undefined) {
     (a) => a.status === 'inProgress' && !isStaleInProgress(a),
   );
 
-  const paid = appointments.filter((a) => a.paymentStatus === 'success');
+  const paid = appointments.filter((a) =>
+    a.paymentStatus === 'success' &&
+    !(a.status === 'cancelled' && a.refundStatus === 'pending'),
+  );
 
   const today = appointments.filter((a) => {
     const d = new Date(a.scheduledAt);

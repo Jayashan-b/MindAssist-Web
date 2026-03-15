@@ -31,6 +31,8 @@ export function useSessionNotifications(appointments: Appointment[]) {
 
       for (const appt of appointments) {
         if (appt.status !== 'confirmed' && appt.status !== 'inProgress') continue;
+        // Skip appointments where doctor already opened the room
+        if (appt.doctorJoinedAt) continue;
 
         const scheduled = new Date(appt.scheduledAt);
         const mins = differenceInMinutes(scheduled, now);
@@ -48,7 +50,7 @@ export function useSessionNotifications(appointments: Appointment[]) {
           ) {
             notifiedRef.current.add(appt.id);
             const name = appt.anonymousMode
-              ? appt.anonymousAlias || 'Anonymous'
+              ? 'Anonymous Patient'
               : appt.patientName || 'Patient';
             new Notification('Session Starting Soon', {
               body: `Your session with ${name} starts in ${mins} minute${mins !== 1 ? 's' : ''}`,

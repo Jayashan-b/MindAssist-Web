@@ -76,6 +76,8 @@ export interface Appointment {
   doctorE2eeCapable?: boolean;
   patientE2eeCapable?: boolean;
   sessionE2ee?: boolean;
+  // Refund tracking on cancellation
+  refundStatus?: 'pending' | 'none' | null;
 }
 
 export const SPECIALTIES = ['Psychiatrist', 'Psychologist', 'Counsellor'] as const;

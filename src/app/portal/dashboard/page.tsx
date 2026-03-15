@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   CalendarCheck,
@@ -20,6 +20,9 @@ import SessionNotificationBanner from '@/components/portal/SessionNotificationBa
 import { useAuth } from '@/lib/hooks/useAuth';
 import { useAppointments } from '@/lib/hooks/useAppointments';
 import { useSessionNotifications } from '@/lib/hooks/useSessionNotifications';
+import { usePatients } from '@/lib/hooks/usePatients';
+import PatientProfileModal from '@/components/portal/PatientProfileModal';
+import type { PatientProfile } from '@/lib/types';
 
 export default function DashboardPage() {
   return (
@@ -33,6 +36,13 @@ function DashboardContent() {
   const { specialist } = useAuth();
   const { appointments, upcoming, completed, paid, uniquePatientCount, loading } = useAppointments(specialist?.id);
   const { approachingSessions } = useSessionNotifications(appointments);
+  const { patients } = usePatients(appointments);
+  const [selectedPatient, setSelectedPatient] = useState<PatientProfile | null>(null);
+
+  const handleViewPatient = useCallback((userId: string) => {
+    const match = patients.find((p) => p.userId === userId);
+    if (match) setSelectedPatient(match);
+  }, [patients]);
 
   const [now, setNow] = useState(new Date());
   useEffect(() => {
@@ -40,10 +50,13 @@ function DashboardContent() {
     return () => clearInterval(interval);
   }, []);
 
-  // Active calls: appointments within the join window (±15 min of scheduled time)
-  const activeCalls = appointments.filter((a) => {
+  // Active sessions: doctor joined and hasn't left, or within join window
+  const activeSessions = appointments.filter((a) => {
     if (a.status !== 'confirmed' && a.status !== 'inProgress') return false;
     if (!a.meetingUrl?.startsWith('consultation-') && !a.meetingUrl?.startsWith('https://meet.jit.si/')) return false;
+    // Active if doctor joined and hasn't left
+    if (a.doctorJoinedAt && !a.doctorLeftAt) return true;
+    // Or within join window
     const scheduled = new Date(a.scheduledAt);
     const minBefore = differenceInMinutes(scheduled, now);
     const minAfter = differenceInMinutes(now, scheduled);
@@ -51,9 +64,7 @@ function DashboardContent() {
     return minBefore <= 15 && minAfter <= (duration + 15);
   });
 
-  const totalIncome = paid.reduce(() => {
-    return specialist?.priceInCents ?? 0;
-  }, 0) * paid.length / 100;
+  const totalIncome = paid.length * (specialist?.priceInCents ?? 0) / 100;
 
   const avgRating = specialist?.reviews?.length
     ? (specialist.reviews.reduce((sum: number, r) => sum + r.rating, 0) / specialist.reviews.length).toFixed(1)
@@ -112,19 +123,19 @@ function DashboardContent() {
           </div>
 
           {/* Active Calls */}
-          {!loading && activeCalls.length > 0 && (
+          {!loading && activeSessions.length > 0 && (
             <div className="bg-emerald-50 rounded-2xl border border-emerald-200/60 p-6 mb-6 ring-1 ring-emerald-200/40">
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                <h2 className="text-lg font-bold text-emerald-900">Active Calls</h2>
+                <h2 className="text-lg font-bold text-emerald-900">Active Sessions</h2>
                 <span className="ml-auto flex items-center gap-1 text-xs text-emerald-600 font-medium">
                   <Video className="w-3.5 h-3.5" />
-                  {activeCalls.length} session{activeCalls.length !== 1 ? 's' : ''} ready
+                  {activeSessions.length} session{activeSessions.length !== 1 ? 's' : ''} ready
                 </span>
               </div>
               <div className="space-y-3">
-                {activeCalls.map((apt) => (
-                  <AppointmentCard key={apt.id} appointment={apt} />
+                {activeSessions.map((apt) => (
+                  <AppointmentCard key={apt.id} appointment={apt} onViewPatient={handleViewPatient} />
                 ))}
               </div>
             </div>
@@ -160,7 +171,7 @@ function DashboardContent() {
             ) : (
               <div className="space-y-3">
                 {upcoming.slice(0, 5).map((apt) => (
-                  <AppointmentCard key={apt.id} appointment={apt} />
+                  <AppointmentCard key={apt.id} appointment={apt} onViewPatient={handleViewPatient} />
                 ))}
               </div>
             )}
@@ -187,6 +198,14 @@ function DashboardContent() {
                 </Link>
               </div>
             </div>
+          )}
+          {selectedPatient && (
+            <PatientProfileModal
+              open={!!selectedPatient}
+              onClose={() => setSelectedPatient(null)}
+              patient={selectedPatient}
+              specialistId={specialist?.id}
+            />
           )}
         </motion.div>
       </main>
