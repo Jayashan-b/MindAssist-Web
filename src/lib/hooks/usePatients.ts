@@ -40,7 +40,7 @@ export function usePatients(appointments: Appointment[]) {
 
     const profiles: PatientProfile[] = Object.values(map).map(({ profileKey, userId, apts }) => {
       const sorted = [...apts].sort(
-        (a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime(),
+        (a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime(),
       );
 
       const isAnon = apts[0].anonymousMode;
@@ -78,8 +78,8 @@ export function usePatients(appointments: Appointment[]) {
         totalSessions: apts.length,
         completedSessions,
         cancelledSessions,
-        firstVisit: sorted[0]?.scheduledAt ?? '',
-        lastVisit: sorted[sorted.length - 1]?.scheduledAt ?? '',
+        firstVisit: sorted[sorted.length - 1]?.scheduledAt ?? '',
+        lastVisit: sorted[0]?.scheduledAt ?? '',
         averageRating,
         appointments: sorted,
         notes: [],

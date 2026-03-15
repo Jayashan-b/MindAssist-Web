@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { Upload, FileText, Trash2, Loader2, Download, Share2, X } from 'lucide-react';
+import { Upload, FileText, Trash2, Loader2, Download, Share2, X, Lock } from 'lucide-react';
 import type { PatientDocument } from '@/lib/types';
 
 interface PatientDocumentUploaderProps {
@@ -12,6 +12,8 @@ interface PatientDocumentUploaderProps {
   onRemove: (doc: PatientDocument) => Promise<void>;
   onToggleShare: (doc: PatientDocument, shared: boolean) => Promise<void>;
   onClearError?: () => void;
+  /** Hides share toggle on doc rows; shows "Private" badge instead (for clinical docs) */
+  hideSharingControls?: boolean;
 }
 
 function formatBytes(bytes: number): string {
@@ -30,6 +32,7 @@ export default function PatientDocumentUploader({
   onRemove,
   onToggleShare,
   onClearError,
+  hideSharingControls,
 }: PatientDocumentUploaderProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [description, setDescription] = useState('');
@@ -55,7 +58,7 @@ export default function PatientDocumentUploader({
   return (
     <div className="space-y-4">
       {/* Upload area */}
-      <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 text-center hover:border-violet-300 transition-colors">
+      <div className={`border-2 border-dashed border-slate-200 rounded-xl p-6 text-center transition-colors ${hideSharingControls ? 'hover:border-amber-300' : 'hover:border-violet-300'}`}>
         <input
           ref={fileRef}
           type="file"
@@ -112,7 +115,7 @@ export default function PatientDocumentUploader({
               key={doc.id}
               className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100 group"
             >
-              <div className="w-9 h-9 rounded-lg bg-violet-100 text-violet-600 flex items-center justify-center shrink-0">
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${hideSharingControls ? 'bg-amber-100 text-amber-600' : 'bg-violet-100 text-violet-600'}`}>
                 <FileText className="w-4 h-4" />
               </div>
               <div className="flex-1 min-w-0">
@@ -123,17 +126,23 @@ export default function PatientDocumentUploader({
                 </p>
               </div>
               <div className="flex items-center gap-1">
-                <button
-                  onClick={() => onToggleShare(doc, !doc.sharedWithPatient)}
-                  title={doc.sharedWithPatient ? 'Shared with patient — click to unshare' : 'Share with patient'}
-                  className={`p-1.5 rounded-md transition-all ${
-                    doc.sharedWithPatient
-                      ? 'text-emerald-600 bg-emerald-50'
-                      : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 opacity-0 group-hover:opacity-100'
-                  }`}
-                >
-                  <Share2 className="w-3.5 h-3.5" />
-                </button>
+                {hideSharingControls ? (
+                  <span className="flex items-center gap-1 px-2 py-1 bg-amber-50 text-amber-600 rounded-md text-[10px] font-medium">
+                    <Lock className="w-2.5 h-2.5" /> Private
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => onToggleShare(doc, !doc.sharedWithPatient)}
+                    title={doc.sharedWithPatient ? 'Shared with patient — click to unshare' : 'Share with patient'}
+                    className={`p-1.5 rounded-md transition-all ${
+                      doc.sharedWithPatient
+                        ? 'text-emerald-600 bg-emerald-50'
+                        : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 opacity-0 group-hover:opacity-100'
+                    }`}
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
                 <a
                   href={doc.fileUrl}
                   target="_blank"

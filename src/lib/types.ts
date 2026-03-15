@@ -183,6 +183,8 @@ export type SessionDuration = (typeof SESSION_DURATIONS)[number];
 export const JOIN_WINDOW_MINUTES = 15;
 
 // ── Patient notes & documents ────────────────────────────────────
+export type NoteCategory = 'session' | 'patient';
+
 export interface PatientNote {
   id: string;
   patientUserId: string;
@@ -192,6 +194,7 @@ export interface PatientNote {
   appointmentId: string | null;
   tags: string[];
   sharedWithPatient?: boolean;
+  category: NoteCategory;
 }
 
 export interface PatientDocument {
@@ -205,6 +208,7 @@ export interface PatientDocument {
   description: string | null;
   appointmentId: string | null;
   sharedWithPatient?: boolean;
+  category: NoteCategory;
 }
 
 export interface PatientUpload {

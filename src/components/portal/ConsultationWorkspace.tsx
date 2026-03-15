@@ -15,13 +15,17 @@ import {
   Phone,
   ShieldQuestion,
   History,
+  Stethoscope,
+  Lock,
+  Hash,
 } from 'lucide-react';
 import { format } from 'date-fns';
-import type { Appointment, PatientNote, PatientDocument as PatientDocType } from '@/lib/types';
+import type { Appointment, PatientNote, PatientDocument as PatientDocType, NoteCategory } from '@/lib/types';
 import { APPOINTMENT_STATUS_LABELS, APPOINTMENT_STATUS_COLORS } from '@/lib/types';
 import { usePatientNotes } from '@/lib/hooks/usePatientNotes';
 import { usePatientDocuments } from '@/lib/hooks/usePatientDocuments';
 import { usePatientUploads } from '@/lib/hooks/usePatientUploads';
+import { sessionRefId } from '@/lib/utils/referenceIds';
 import PatientNoteEditor from './PatientNoteEditor';
 import PatientDocumentUploader from './PatientDocumentUploader';
 
@@ -50,40 +54,105 @@ export default function ConsultationWorkspace({
   const [showNoteEditor, setShowNoteEditor] = useState(false);
   const [editingNote, setEditingNote] = useState<PatientNote | null>(null);
   const [deletingNote, setDeletingNote] = useState<string | null>(null);
+  const [noteCategory, setNoteCategory] = useState<NoteCategory>('session');
 
-  const { notes, loading: notesLoading, addNote, editNote, removeNote, toggleSharing: toggleNoteSharing } = usePatientNotes(specialistId, patientKey);
-  const { documents, loading: docsLoading, uploading, error: docError, clearError: clearDocError, uploadDocument, removeDocument, toggleSharing: toggleDocSharing } = usePatientDocuments(specialistId, patientKey);
-  const { uploads } = usePatientUploads(specialistId, isAnonymous ? undefined : userId);
+  // Session notes for this appointment — always use real userId, filter by appointmentId
+  const {
+    notes: sessionNotes,
+    loading: sessionNotesLoading,
+    addNote,
+    editNote,
+    removeNote,
+    toggleSharing: toggleNoteSharing,
+  } = usePatientNotes(specialistId, userId, { category: 'session', appointmentId });
 
-  // Filter patient history — other appointments with this patient (empty for anonymous)
-  const patientHistory = isAnonymous ? [] : appointments
+  // Clinical notes (patient-level, private) — enabled for ALL patients including anonymous
+  const {
+    notes: clinicalNotes,
+    loading: clinicalNotesLoading,
+    addNote: addClinicalNote,
+    editNote: editClinicalNote,
+    removeNote: removeClinicalNote,
+  } = usePatientNotes(specialistId, userId, { category: 'patient' });
+
+  // Session documents — real userId + appointmentId filter
+  const {
+    documents: sessionDocuments,
+    loading: docsLoading,
+    uploading,
+    error: docError,
+    clearError: clearDocError,
+    uploadDocument,
+    removeDocument,
+    toggleSharing: toggleDocSharing,
+  } = usePatientDocuments(specialistId, userId, { category: 'session', appointmentId });
+
+  // Clinical documents (patient-level, private) — enabled for ALL patients including anonymous
+  const {
+    documents: clinicalDocuments,
+    loading: clinicalDocsLoading,
+    uploading: clinicalUploading,
+    error: clinicalDocError,
+    clearError: clearClinicalDocError,
+    uploadDocument: uploadClinicalDocument,
+    removeDocument: removeClinicalDocument,
+  } = usePatientDocuments(specialistId, userId, { category: 'patient' });
+
+  // All session notes/docs for this patient (unfiltered by appointmentId — used by History tab)
+  const { notes: allSessionNotes } = usePatientNotes(specialistId, userId, { category: 'session' });
+  const { documents: allSessionDocs } = usePatientDocuments(specialistId, userId, { category: 'session' });
+
+  const { uploads } = usePatientUploads(specialistId, userId);
+
+  // Combined note counts for tab badge
+  const allNotesCount = sessionNotes.length + clinicalNotes.length;
+
+  // Filter patient history — other appointments with this patient
+  const patientHistory = appointments
     .filter((a) => a.userId === userId && a.id !== appointmentId
       && (a.status === 'completed' || a.status === 'rated' || a.status === 'inProgress'))
     .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime());
 
-  // Notes for a specific session
-  const notesForSession = (aptId: string) => notes.filter((n) => n.appointmentId === aptId);
-
-  const handleSaveNote = async (content: string, tags: string[], noteAppointmentId: string | null) => {
+  const handleSaveNote = async (content: string, tags: string[], noteAppointmentId: string | null, category: NoteCategory) => {
     if (editingNote) {
-      await editNote(editingNote.id, content, tags);
+      // Editing uses the original note's context
+      if (editingNote.category === 'patient') {
+        await editClinicalNote(editingNote.id, content, tags);
+      } else {
+        await editNote(editingNote.id, content, tags);
+      }
       setEditingNote(null);
+    } else if (category === 'patient') {
+      await addClinicalNote(content, tags, undefined, 'patient');
     } else {
-      // Auto-link to current appointment
-      await addNote(content, tags, noteAppointmentId ?? appointmentId);
+      // Session note — auto-link to current appointment
+      await addNote(content, tags, noteAppointmentId ?? appointmentId, 'session');
     }
     setShowNoteEditor(false);
+    setNoteCategory('session');
   };
 
-  const handleDeleteNote = async (noteId: string) => {
+  const handleDeleteNote = async (noteId: string, category: NoteCategory) => {
     setDeletingNote(noteId);
-    await removeNote(noteId);
+    if (category === 'patient') {
+      await removeClinicalNote(noteId);
+    } else {
+      await removeNote(noteId);
+    }
     setDeletingNote(null);
   };
 
+  const handleUploadDocument = async (file: File, description?: string) => {
+    await uploadDocument(file, description, appointmentId, 'session');
+  };
+
+  const handleUploadClinicalDocument = async (file: File, description?: string) => {
+    await uploadClinicalDocument(file, description, undefined, 'patient');
+  };
+
   const tabs: { key: WorkspaceTab; label: string; icon: React.ElementType; count?: number }[] = [
-    { key: 'notes', label: 'Notes', icon: FileText, count: notes.length },
-    { key: 'documents', label: 'Documents', icon: FolderOpen, count: documents.length + uploads.length },
+    { key: 'notes', label: 'Notes', icon: FileText, count: allNotesCount },
+    { key: 'documents', label: 'Documents', icon: FolderOpen, count: sessionDocuments.length + clinicalDocuments.length + uploads.length },
     { key: 'history', label: 'History', icon: History, count: patientHistory.length },
   ];
 
@@ -117,13 +186,15 @@ export default function ConsultationWorkspace({
         {/* Notes Tab */}
         {tab === 'notes' && (
           <div className="space-y-4">
+            {/* Session Notes Section */}
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-slate-700">
-                {notes.length} Note{notes.length !== 1 ? 's' : ''}
+                Session Notes
+                <span className="ml-1.5 px-1.5 py-0.5 bg-violet-100 text-violet-600 rounded text-[10px] font-bold">{sessionNotes.length}</span>
               </h3>
               {!showNoteEditor && !editingNote && (
                 <button
-                  onClick={() => setShowNoteEditor(true)}
+                  onClick={() => { setNoteCategory('session'); setShowNoteEditor(true); }}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 text-white text-xs font-medium rounded-lg hover:bg-violet-700 transition-colors"
                 >
                   <Plus className="w-3 h-3" /> Add Note
@@ -136,66 +207,86 @@ export default function ConsultationWorkspace({
                 initialContent={editingNote?.content}
                 initialTags={editingNote?.tags}
                 appointmentId={editingNote?.appointmentId ?? appointmentId}
+                category={editingNote?.category ?? noteCategory}
+                isAnonymous={isAnonymous}
                 onSave={handleSaveNote}
-                onCancel={() => { setShowNoteEditor(false); setEditingNote(null); }}
+                onCancel={() => { setShowNoteEditor(false); setEditingNote(null); setNoteCategory('session'); }}
               />
             )}
 
-            {notesLoading ? (
+            {sessionNotesLoading ? (
               <div className="flex justify-center py-8">
                 <Loader2 className="w-6 h-6 text-violet-400 animate-spin" />
               </div>
-            ) : notes.length === 0 && !showNoteEditor ? (
-              <div className="text-center py-8">
-                <FileText className="w-10 h-10 text-slate-200 mx-auto mb-2" />
-                <p className="text-sm text-slate-500">No notes yet</p>
-                <p className="text-xs text-slate-400">Add clinical notes during or after the session</p>
+            ) : sessionNotes.length === 0 && !showNoteEditor ? (
+              <div className="text-center py-6">
+                <FileText className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+                <p className="text-sm text-slate-500">No session notes yet</p>
+                <p className="text-xs text-slate-400">Add notes during or after the session</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {notes.map((note) => (
-                  <div key={note.id} className="bg-white border border-slate-100 rounded-xl p-4 group">
-                    <p className="text-sm text-slate-700 whitespace-pre-wrap">{note.content}</p>
-                    <div className="flex items-center gap-2 mt-2">
-                      {note.tags.map((tag) => (
-                        <span key={tag} className="px-2 py-0.5 bg-violet-50 text-violet-600 rounded-md text-[10px] font-medium">{tag}</span>
-                      ))}
-                      <span className="text-[10px] text-slate-400 ml-auto">
-                        {format(new Date(note.createdAt), 'MMM d, yyyy hh:mm a')}
-                      </span>
-                      <button
-                        onClick={() => toggleNoteSharing(note.id, !note.sharedWithPatient)}
-                        title={note.sharedWithPatient ? 'Shared with patient — click to unshare' : 'Share with patient'}
-                        className={`p-1 rounded transition-all ${
-                          note.sharedWithPatient
-                            ? 'text-emerald-600'
-                            : 'text-slate-400 hover:text-emerald-600 opacity-0 group-hover:opacity-100'
-                        }`}
-                      >
-                        <Share2 className="w-3 h-3" />
-                      </button>
-                      <button
-                        onClick={() => { setEditingNote(note); setShowNoteEditor(false); }}
-                        className="p-1 text-slate-400 hover:text-violet-600 rounded opacity-0 group-hover:opacity-100 transition-all"
-                      >
-                        <Pencil className="w-3 h-3" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteNote(note.id)}
-                        disabled={deletingNote === note.id}
-                        className="p-1 text-slate-400 hover:text-red-600 rounded opacity-0 group-hover:opacity-100 transition-all"
-                      >
-                        {deletingNote === note.id ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : (
-                          <Trash2 className="w-3 h-3" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
+                {sessionNotes.map((note) => (
+                  <NoteCard
+                    key={note.id}
+                    note={note}
+                    deletingNote={deletingNote}
+                    onToggleSharing={toggleNoteSharing}
+                    onEdit={(n) => { setEditingNote(n); setShowNoteEditor(false); }}
+                    onDelete={(id) => handleDeleteNote(id, 'session')}
+                    showShareToggle
+                  />
                 ))}
               </div>
             )}
+
+            {/* Clinical Notes Section */}
+              <div className="mt-6 pt-4 border-t border-slate-100">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Stethoscope className="w-3.5 h-3.5 text-slate-500" />
+                    <h3 className="text-sm font-semibold text-slate-700">
+                      Clinical Notes
+                      <span className="ml-1.5 px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[10px] font-bold">{clinicalNotes.length}</span>
+                    </h3>
+                    <span className="flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-600 rounded text-[10px] font-medium">
+                      <Lock className="w-2.5 h-2.5" /> Private
+                    </span>
+                  </div>
+                  {!showNoteEditor && !editingNote && (
+                    <button
+                      onClick={() => { setNoteCategory('patient'); setShowNoteEditor(true); }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-600 text-xs font-medium rounded-lg hover:bg-slate-200 transition-colors"
+                    >
+                      <Plus className="w-3 h-3" /> Clinical Note
+                    </button>
+                  )}
+                </div>
+
+                {clinicalNotesLoading ? (
+                  <div className="flex justify-center py-4">
+                    <Loader2 className="w-5 h-5 text-slate-300 animate-spin" />
+                  </div>
+                ) : clinicalNotes.length === 0 ? (
+                  <p className="text-xs text-slate-400 text-center py-4">
+                    No clinical notes. These are private notes about this patient — never shared.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {clinicalNotes.map((note) => (
+                      <NoteCard
+                        key={note.id}
+                        note={note}
+                        deletingNote={deletingNote}
+                        onEdit={(n) => { setEditingNote(n); setShowNoteEditor(false); }}
+                        onDelete={(id) => handleDeleteNote(id, 'patient')}
+                        showShareToggle={false}
+                        isClinical
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
           </div>
         )}
 
@@ -203,7 +294,8 @@ export default function ConsultationWorkspace({
         {tab === 'documents' && (
           <div>
             <h3 className="text-sm font-semibold text-slate-700 mb-3">
-              {documents.length} Document{documents.length !== 1 ? 's' : ''}
+              Session Documents
+              <span className="ml-1.5 px-1.5 py-0.5 bg-violet-100 text-violet-600 rounded text-[10px] font-bold">{sessionDocuments.length}</span>
             </h3>
             {docsLoading ? (
               <div className="flex justify-center py-8">
@@ -211,15 +303,47 @@ export default function ConsultationWorkspace({
               </div>
             ) : (
               <PatientDocumentUploader
-                documents={documents}
+                documents={sessionDocuments}
                 uploading={uploading}
                 error={docError}
-                onUpload={uploadDocument}
+                onUpload={handleUploadDocument}
                 onRemove={removeDocument}
                 onToggleShare={(doc, shared) => toggleDocSharing(doc.id, shared)}
                 onClearError={clearDocError}
               />
             )}
+
+            {/* Clinical Documents Section */}
+            <div className="mt-6 pt-4 border-t border-slate-100">
+              <div className="flex items-center gap-2 mb-3">
+                <Stethoscope className="w-3.5 h-3.5 text-slate-500" />
+                <h3 className="text-sm font-semibold text-slate-700">
+                  Clinical Records
+                  <span className="ml-1.5 px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[10px] font-bold">{clinicalDocuments.length}</span>
+                </h3>
+                <span className="flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-600 rounded text-[10px] font-medium">
+                  <Lock className="w-2.5 h-2.5" /> Private
+                </span>
+              </div>
+              {clinicalDocsLoading ? (
+                <div className="flex justify-center py-4">
+                  <Loader2 className="w-5 h-5 text-slate-300 animate-spin" />
+                </div>
+              ) : (
+                <div className="rounded-xl border border-amber-100 bg-amber-50/30 p-3">
+                  <PatientDocumentUploader
+                    documents={clinicalDocuments}
+                    uploading={clinicalUploading}
+                    error={clinicalDocError}
+                    onUpload={handleUploadClinicalDocument}
+                    onRemove={removeClinicalDocument}
+                    onToggleShare={() => Promise.resolve()}
+                    onClearError={clearClinicalDocError}
+                    hideSharingControls
+                  />
+                </div>
+              )}
+            </div>
 
             {/* Patient uploads (read-only) */}
             {uploads.length > 0 && (
@@ -283,9 +407,10 @@ export default function ConsultationWorkspace({
               </div>
             ) : (
               patientHistory.map((apt) => {
-                const sessionNotes = notesForSession(apt.id);
+                const notesForApt = allSessionNotes.filter((n) => n.appointmentId === apt.id);
+                const docsForApt = allSessionDocs.filter((d) => d.appointmentId === apt.id);
                 return (
-                  <HistorySessionCard key={apt.id} appointment={apt} notes={sessionNotes} />
+                  <HistorySessionCard key={apt.id} appointment={apt} notes={notesForApt} documents={docsForApt} />
                 );
               })
             )}
@@ -296,12 +421,90 @@ export default function ConsultationWorkspace({
   );
 }
 
+// --- Note Card ---
+
+function NoteCard({
+  note,
+  deletingNote,
+  onToggleSharing,
+  onEdit,
+  onDelete,
+  showShareToggle,
+  isClinical = false,
+}: {
+  note: PatientNote;
+  deletingNote: string | null;
+  onToggleSharing?: (noteId: string, shared: boolean) => Promise<void>;
+  onEdit: (note: PatientNote) => void;
+  onDelete: (noteId: string) => void;
+  showShareToggle: boolean;
+  isClinical?: boolean;
+}) {
+  return (
+    <div className={`rounded-xl p-4 group ${isClinical ? 'bg-amber-50/50 border border-amber-100' : 'bg-white border border-slate-100'}`}>
+      <p className="text-sm text-slate-700 whitespace-pre-wrap">{note.content}</p>
+      <div className="flex items-center gap-2 mt-2">
+        {note.tags.map((tag) => (
+          <span key={tag} className="px-2 py-0.5 bg-violet-50 text-violet-600 rounded-md text-[10px] font-medium">{tag}</span>
+        ))}
+        {isClinical && (
+          <span className="flex items-center gap-1 px-1.5 py-0.5 bg-amber-100 text-amber-600 rounded text-[10px] font-medium">
+            <Lock className="w-2 h-2" /> Private
+          </span>
+        )}
+        <span className="text-[10px] text-slate-400 ml-auto">
+          {format(new Date(note.createdAt), 'MMM d, yyyy hh:mm a')}
+        </span>
+        {showShareToggle && onToggleSharing && (
+          <button
+            onClick={() => onToggleSharing(note.id, !note.sharedWithPatient)}
+            title={note.sharedWithPatient ? 'Shared with patient — click to unshare' : 'Share with patient'}
+            className={`p-1 rounded transition-all ${
+              note.sharedWithPatient
+                ? 'text-emerald-600'
+                : 'text-slate-400 hover:text-emerald-600 opacity-0 group-hover:opacity-100'
+            }`}
+          >
+            <Share2 className="w-3 h-3" />
+          </button>
+        )}
+        <button
+          onClick={() => onEdit(note)}
+          className="p-1 text-slate-400 hover:text-violet-600 rounded opacity-0 group-hover:opacity-100 transition-all"
+        >
+          <Pencil className="w-3 h-3" />
+        </button>
+        <button
+          onClick={() => onDelete(note.id)}
+          disabled={deletingNote === note.id}
+          className="p-1 text-slate-400 hover:text-red-600 rounded opacity-0 group-hover:opacity-100 transition-all"
+        >
+          {deletingNote === note.id ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : (
+            <Trash2 className="w-3 h-3" />
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // --- History Session Card (expandable) ---
 
-function HistorySessionCard({ appointment, notes }: { appointment: Appointment; notes: PatientNote[] }) {
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function HistorySessionCard({ appointment, notes, documents }: { appointment: Appointment; notes: PatientNote[]; documents: PatientDocType[] }) {
   const [expanded, setExpanded] = useState(false);
   const scheduledDate = new Date(appointment.scheduledAt);
   const isAudio = appointment.consultationType === 'audio';
+  const hasContent = notes.length > 0 || documents.length > 0;
 
   return (
     <div className="bg-slate-50 rounded-xl border border-slate-100 overflow-hidden">
@@ -322,6 +525,9 @@ function HistorySessionCard({ appointment, notes }: { appointment: Appointment; 
             <span className="text-xs text-slate-400">
               {format(scheduledDate, 'hh:mm a')}
             </span>
+            <span className="font-mono text-[10px] bg-violet-50 text-violet-600 px-1.5 py-0.5 rounded select-all">
+              {sessionRefId(appointment.id)}
+            </span>
           </div>
           <div className="flex items-center gap-2 mt-0.5">
             <span className="flex items-center gap-1 text-xs text-slate-400">
@@ -334,6 +540,9 @@ function HistorySessionCard({ appointment, notes }: { appointment: Appointment; 
             {notes.length > 0 && (
               <span className="text-xs text-violet-500">{notes.length} note{notes.length !== 1 ? 's' : ''}</span>
             )}
+            {documents.length > 0 && (
+              <span className="text-xs text-teal-500">{documents.length} doc{documents.length !== 1 ? 's' : ''}</span>
+            )}
           </div>
         </div>
         <span className={`px-2 py-1 rounded-lg text-[10px] font-semibold ${APPOINTMENT_STATUS_COLORS[appointment.status]}`}>
@@ -341,21 +550,55 @@ function HistorySessionCard({ appointment, notes }: { appointment: Appointment; 
         </span>
       </button>
 
-      {expanded && notes.length > 0 && (
+      {expanded && hasContent && (
         <div className="px-3 pb-3 space-y-2">
-          <div className="border-t border-slate-200 pt-2">
-            <p className="text-[10px] font-semibold text-slate-500 uppercase mb-1.5">Session Notes</p>
-            {notes.map((note) => (
-              <div key={note.id} className="bg-white rounded-lg p-2.5 mb-1.5 border border-slate-100">
-                <p className="text-xs text-slate-700 whitespace-pre-wrap">{note.content}</p>
-                <div className="flex items-center gap-1.5 mt-1.5">
-                  {note.tags.map((tag) => (
-                    <span key={tag} className="px-1.5 py-0.5 bg-violet-50 text-violet-600 rounded text-[10px] font-medium">{tag}</span>
-                  ))}
+          {notes.length > 0 && (
+            <div className="border-t border-slate-200 pt-2">
+              <p className="text-[10px] font-semibold text-violet-500 uppercase tracking-wide mb-1.5 flex items-center gap-1">
+                <FileText className="w-3 h-3" /> Notes
+              </p>
+              {notes.map((note) => (
+                <div key={note.id} className="bg-white rounded-lg p-2.5 mb-1.5 border border-slate-100">
+                  <p className="text-xs text-slate-700 whitespace-pre-wrap">{note.content}</p>
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    {note.tags.map((tag) => (
+                      <span key={tag} className="px-1.5 py-0.5 bg-violet-50 text-violet-600 rounded text-[10px] font-medium">{tag}</span>
+                    ))}
+                    {note.sharedWithPatient && <Share2 className="w-2.5 h-2.5 text-emerald-500" />}
+                    <span className="text-[10px] text-slate-400 ml-auto">
+                      {format(new Date(note.createdAt), 'MMM d, hh:mm a')}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
+
+          {documents.length > 0 && (
+            <div className={`${notes.length > 0 ? '' : 'border-t border-slate-200'} pt-2`}>
+              <p className="text-[10px] font-semibold text-teal-500 uppercase tracking-wide mb-1.5 flex items-center gap-1">
+                <FolderOpen className="w-3 h-3" /> Documents
+              </p>
+              {documents.map((doc) => (
+                <a
+                  key={doc.id}
+                  href={doc.fileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2.5 bg-white rounded-lg p-2.5 mb-1.5 border border-slate-100 hover:border-teal-200 transition-colors"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-teal-100 text-teal-600 flex items-center justify-center shrink-0">
+                    <FileText className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-slate-700 truncate">{doc.fileName}</p>
+                    <p className="text-[10px] text-slate-400">{formatBytes(doc.fileSizeBytes)}</p>
+                  </div>
+                  <Download className="w-3 h-3 text-slate-400" />
+                </a>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

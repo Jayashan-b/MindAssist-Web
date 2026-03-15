@@ -1,14 +1,17 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Save, X, Loader2 } from 'lucide-react';
+import { Save, X, Loader2, Lock, Share2 } from 'lucide-react';
 import { NOTE_TAGS } from '@/lib/types';
+import type { NoteCategory } from '@/lib/types';
 
 interface PatientNoteEditorProps {
   initialContent?: string;
   initialTags?: string[];
   appointmentId?: string | null;
-  onSave: (content: string, tags: string[], appointmentId: string | null) => Promise<void>;
+  category?: NoteCategory;
+  isAnonymous?: boolean;
+  onSave: (content: string, tags: string[], appointmentId: string | null, category: NoteCategory) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -16,12 +19,15 @@ export default function PatientNoteEditor({
   initialContent = '',
   initialTags = [],
   appointmentId = null,
+  category: initialCategory = 'session',
+  isAnonymous = false,
   onSave,
   onCancel,
 }: PatientNoteEditorProps) {
   const [content, setContent] = useState(initialContent);
   const [tags, setTags] = useState<string[]>(initialTags);
   const [saving, setSaving] = useState(false);
+  const [category, setCategory] = useState<NoteCategory>(initialCategory);
 
   const toggleTag = (tag: string) => {
     setTags((prev) =>
@@ -33,7 +39,7 @@ export default function PatientNoteEditor({
     if (!content.trim()) return;
     setSaving(true);
     try {
-      await onSave(content.trim(), tags, appointmentId);
+      await onSave(content.trim(), tags, appointmentId, category);
     } finally {
       setSaving(false);
     }
@@ -41,10 +47,57 @@ export default function PatientNoteEditor({
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+      {/* Category Toggle — only show for non-anonymous */}
+      {!isAnonymous && (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCategory('session')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              category === 'session'
+                ? 'bg-violet-100 text-violet-700 ring-1 ring-violet-300'
+                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+            }`}
+          >
+            <Share2 className="w-3 h-3" />
+            Session Note
+          </button>
+          <button
+            onClick={() => setCategory('patient')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              category === 'patient'
+                ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-300'
+                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+            }`}
+          >
+            <Lock className="w-3 h-3" />
+            Clinical Note
+          </button>
+        </div>
+      )}
+
+      {/* Sharing indicator */}
+      <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs ${
+        category === 'session'
+          ? 'bg-emerald-50 text-emerald-700'
+          : 'bg-amber-50 text-amber-700'
+      }`}>
+        {category === 'session' ? (
+          <>
+            <Share2 className="w-3 h-3" />
+            This note will be shared with the patient by default
+          </>
+        ) : (
+          <>
+            <Lock className="w-3 h-3" />
+            This note is private — never shared with the patient
+          </>
+        )}
+      </div>
+
       <textarea
         value={content}
         onChange={(e) => setContent(e.target.value)}
-        placeholder="Write a clinical note..."
+        placeholder={category === 'session' ? 'Write a session note...' : 'Write a clinical observation...'}
         rows={4}
         className="w-full px-3 py-2.5 bg-slate-50/80 border border-slate-200 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 outline-none transition-all resize-none"
         autoFocus
