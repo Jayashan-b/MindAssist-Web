@@ -13,6 +13,7 @@ import {
   addDoc,
   deleteDoc,
   type DocumentData,
+  type QueryConstraint,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type { Specialist, Appointment, PatientNote, PatientDocument, PatientUpload } from './types';
@@ -298,24 +299,62 @@ function noteFromDoc(data: DocumentData, id: string): PatientNote {
     appointmentId: data.appointmentId ?? null,
     tags: data.tags ?? [],
     sharedWithPatient: data.sharedWithPatient ?? false,
+    category: data.category ?? 'session',
   };
+}
+
+export interface NoteFilter {
+  category?: 'session' | 'patient';
+  appointmentId?: string;
 }
 
 export function watchPatientNotes(
   specialistId: string,
   patientUserId: string,
   callback: (notes: PatientNote[]) => void,
+  filter?: NoteFilter,
 ) {
+  const constraints: QueryConstraint[] = [
+    where('patientUserId', '==', patientUserId),
+  ];
+  if (filter?.category) {
+    constraints.push(where('category', '==', filter.category));
+  }
+  if (filter?.appointmentId) {
+    constraints.push(where('appointmentId', '==', filter.appointmentId));
+  }
+  constraints.push(orderBy('createdAt', 'desc'));
+
   const q = query(
     collection(db, 'specialists', specialistId, 'patientNotes'),
-    where('patientUserId', '==', patientUserId),
-    orderBy('createdAt', 'desc'),
+    ...constraints,
   );
   return onSnapshot(q, (snapshot) => {
     const notes = snapshot.docs.map((d) => noteFromDoc(d.data(), d.id));
     callback(notes);
   }, (error) => {
     console.error('watchPatientNotes error:', error);
+    callback([]);
+  });
+}
+
+/** Watch notes for a specific appointment (by appointmentId, not patientUserId). */
+export function watchSessionNotes(
+  specialistId: string,
+  appointmentId: string,
+  callback: (notes: PatientNote[]) => void,
+) {
+  const q = query(
+    collection(db, 'specialists', specialistId, 'patientNotes'),
+    where('appointmentId', '==', appointmentId),
+    where('category', '==', 'session'),
+    orderBy('createdAt', 'desc'),
+  );
+  return onSnapshot(q, (snapshot) => {
+    const notes = snapshot.docs.map((d) => noteFromDoc(d.data(), d.id));
+    callback(notes);
+  }, (error) => {
+    console.error('watchSessionNotes error:', error);
     callback([]);
   });
 }
@@ -364,24 +403,62 @@ function docFromDoc(data: DocumentData, id: string): PatientDocument {
     description: data.description ?? null,
     appointmentId: data.appointmentId ?? null,
     sharedWithPatient: data.sharedWithPatient ?? false,
+    category: data.category ?? 'session',
   };
+}
+
+export interface DocFilter {
+  category?: 'session' | 'patient';
+  appointmentId?: string;
 }
 
 export function watchPatientDocuments(
   specialistId: string,
   patientUserId: string,
   callback: (docs: PatientDocument[]) => void,
+  filter?: DocFilter,
 ) {
+  const constraints: QueryConstraint[] = [
+    where('patientUserId', '==', patientUserId),
+  ];
+  if (filter?.category) {
+    constraints.push(where('category', '==', filter.category));
+  }
+  if (filter?.appointmentId) {
+    constraints.push(where('appointmentId', '==', filter.appointmentId));
+  }
+  constraints.push(orderBy('uploadedAt', 'desc'));
+
   const q = query(
     collection(db, 'specialists', specialistId, 'patientDocuments'),
-    where('patientUserId', '==', patientUserId),
-    orderBy('uploadedAt', 'desc'),
+    ...constraints,
   );
   return onSnapshot(q, (snapshot) => {
     const docs = snapshot.docs.map((d) => docFromDoc(d.data(), d.id));
     callback(docs);
   }, (error) => {
     console.error('watchPatientDocuments error:', error);
+    callback([]);
+  });
+}
+
+/** Watch documents for a specific appointment (by appointmentId, not patientUserId). */
+export function watchSessionDocuments(
+  specialistId: string,
+  appointmentId: string,
+  callback: (docs: PatientDocument[]) => void,
+) {
+  const q = query(
+    collection(db, 'specialists', specialistId, 'patientDocuments'),
+    where('appointmentId', '==', appointmentId),
+    where('category', '==', 'session'),
+    orderBy('uploadedAt', 'desc'),
+  );
+  return onSnapshot(q, (snapshot) => {
+    const docs = snapshot.docs.map((d) => docFromDoc(d.data(), d.id));
+    callback(docs);
+  }, (error) => {
+    console.error('watchSessionDocuments error:', error);
     callback([]);
   });
 }

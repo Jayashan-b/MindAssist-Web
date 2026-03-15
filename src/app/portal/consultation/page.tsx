@@ -16,6 +16,7 @@ import {
   Loader2,
   Shield,
   UserCheck,
+  Hash,
 } from 'lucide-react';
 import { format, differenceInMinutes } from 'date-fns';
 import Link from 'next/link';
@@ -32,6 +33,7 @@ import ConsultationWorkspace from '@/components/portal/ConsultationWorkspace';
 import PostSessionSummary from '@/components/portal/PostSessionSummary';
 import NextSessionCard from '@/components/portal/NextSessionCard';
 import { supportsE2EE } from '@/lib/e2ee';
+import { sessionRefId, patientRefId } from '@/lib/utils/referenceIds';
 import { usePatientNotes } from '@/lib/hooks/usePatientNotes';
 import { useCallSession } from '@/lib/hooks/useCallSession';
 import type { Appointment } from '@/lib/types';
@@ -357,7 +359,8 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Consultation Room</h1>
           <p className="text-sm text-slate-500">
-            Session with {displayName}
+            {isAudio ? 'Audio' : 'Video'} session with {displayName}
+            {' · '}{format(scheduledDate, 'MMM d')}{' · '}{appointment.durationMinutes || 30} min
           </p>
         </div>
         {isSessionEnded && (
@@ -555,6 +558,16 @@ function ConsultationView({ appointment, userId, specialist, appointments, autoA
                 {appointment.anonymousMode && (
                   <span className="px-1.5 py-0.5 rounded text-xs bg-violet-100 text-violet-600">Anonymous</span>
                 )}
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Hash className="w-3.5 h-3.5 text-slate-400" />
+                <span className="text-slate-500">Session:</span>
+                <span className="font-mono text-xs bg-violet-50 text-violet-600 px-2 py-0.5 rounded select-all">{sessionRefId(appointment.id)}</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Hash className="w-3.5 h-3.5 text-slate-400" />
+                <span className="text-slate-500">Patient:</span>
+                <span className="font-mono text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded select-all">{patientRefId(patientKey)}</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <Calendar className="w-3.5 h-3.5 text-slate-400" />

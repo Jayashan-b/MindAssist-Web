@@ -12,6 +12,7 @@ import { useAuth } from '@/lib/hooks/useAuth';
 import { useAppointments } from '@/lib/hooks/useAppointments';
 import { usePatients } from '@/lib/hooks/usePatients';
 import ActiveSessionCard from '@/components/portal/ActiveSessionCard';
+import { patientRefId, sessionRefId } from '@/lib/utils/referenceIds';
 import type { PatientProfile } from '@/lib/types';
 
 type Filter = 'all' | 'regular' | 'anonymous';
@@ -40,10 +41,16 @@ function PatientsContent() {
     if (filter === 'regular') list = list.filter((p) => !p.isAnonymous);
     if (filter === 'anonymous') list = list.filter((p) => p.isAnonymous);
 
-    // Search
+    // Search — matches name, email, patient ref ID, or session ref IDs
     if (search.trim()) {
       const q = search.toLowerCase();
-      list = list.filter((p) => p.displayName.toLowerCase().includes(q));
+      list = list.filter((p) => {
+        if (p.displayName.toLowerCase().includes(q)) return true;
+        if (p.email?.toLowerCase().includes(q)) return true;
+        if (patientRefId(p.profileKey).toLowerCase().includes(q)) return true;
+        if (p.appointments.some((a) => sessionRefId(a.id).toLowerCase().includes(q))) return true;
+        return false;
+      });
     }
 
     // Sort
