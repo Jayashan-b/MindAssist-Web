@@ -350,6 +350,7 @@ function ConsultationView({ appointment, userId, specialist, appointments }: Con
   };
 
   const handleRejoinSession = () => {
+    callSession.resetUserLeft(); // Allow future auto-rejoin after manual rejoin
     if (isPatientE2eeResolved) {
       fetchTokenWithE2EE(appointment.sessionE2ee!);
     }
@@ -357,12 +358,15 @@ function ConsultationView({ appointment, userId, specialist, appointments }: Con
 
   // Auto-reconnect: if session is still active in Firestore but client lost connection
   // (e.g., HMR reload, browser refresh), automatically rejoin without user action.
+  // Skip if user intentionally left via LiveKit's leave button — show "Rejoin" instead.
+  const { hasUserLeft } = callSession;
   const hasAutoRejoined = useRef(false);
   useEffect(() => {
     if (
       enginePhase === 'disconnected' &&
       !showCall &&
       !hasAutoRejoined.current &&
+      !hasUserLeft() &&
       isPatientE2eeResolved &&
       !isLegacyJitsi
     ) {
@@ -372,7 +376,7 @@ function ConsultationView({ appointment, userId, specialist, appointments }: Con
     if (enginePhase !== 'disconnected') {
       hasAutoRejoined.current = false;
     }
-  }, [enginePhase, showCall, isPatientE2eeResolved, isLegacyJitsi, appointment.sessionE2ee, fetchTokenWithE2EE]);
+  }, [enginePhase, showCall, isPatientE2eeResolved, isLegacyJitsi, appointment.sessionE2ee, fetchTokenWithE2EE, hasUserLeft]);
 
   // End session — calls context's endCall
   const handleEndSession = async () => {
@@ -464,8 +468,8 @@ function ConsultationView({ appointment, userId, specialist, appointments }: Con
             </motion.span>
           )}
           {enginePhase === 'disconnected' && !showCall && (
-            <motion.span key="reconnect" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }} className="ml-auto px-3 py-1.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
-              Reconnect
+            <motion.span key="reconnect" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }} className={`ml-auto px-3 py-1.5 rounded-full text-xs font-semibold ${hasUserLeft() ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+              {hasUserLeft() ? 'Left Session' : 'Reconnect'}
             </motion.span>
           )}
         </AnimatePresence>
@@ -488,8 +492,8 @@ function ConsultationView({ appointment, userId, specialist, appointments }: Con
         </motion.div>
       )}
 
-      {/* Reconnecting placeholder — shown when session active but client reconnecting */}
-      {!showCall && enginePhase === 'disconnected' && !isLegacyJitsi && (
+      {/* Reconnecting placeholder — shown when session active but client reconnecting (not intentional leave) */}
+      {!showCall && enginePhase === 'disconnected' && !isLegacyJitsi && !hasUserLeft() && (
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
