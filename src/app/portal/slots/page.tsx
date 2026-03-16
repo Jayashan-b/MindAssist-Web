@@ -1,18 +1,61 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
-import { CalendarClock, Plus, X, Trash2, Clock, Users } from 'lucide-react';
+import {
+  CalendarClock,
+  Plus,
+  X,
+  Trash2,
+  Clock,
+  Users,
+  Timer,
+  Sunrise,
+  Sun,
+  Sunset,
+  Moon,
+} from 'lucide-react';
 import AuthGuard from '@/components/portal/AuthGuard';
 import PortalSidebar from '@/components/portal/PortalSidebar';
 import SlotCalendar from '@/components/portal/SlotCalendar';
+import StatCard from '@/components/portal/StatCard';
+import TimePickerGrid from '@/components/portal/TimePickerGrid';
+import ConfirmDialog from '@/components/portal/ConfirmDialog';
+import ActiveSessionCard from '@/components/portal/ActiveSessionCard';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { useSlots } from '@/lib/hooks/useSlots';
 import { useAppointments } from '@/lib/hooks/useAppointments';
-import ActiveSessionCard from '@/components/portal/ActiveSessionCard';
 import { getBookedSlotsForSpecialist } from '@/lib/firestore';
 import { TIME_SLOTS, SLOT_PRESETS, getSlotPeriod } from '@/lib/types';
+import { cn } from '@/lib/utils';
+import type { LucideIcon } from 'lucide-react';
+
+const HOURS = Array.from({ length: 24 }, (_, i) => {
+  const val = i.toString().padStart(2, '0');
+  const h12 = i === 0 ? 12 : i > 12 ? i - 12 : i;
+  const ampm = i < 12 ? 'AM' : 'PM';
+  return { value: val, label: `${h12} ${ampm}` };
+});
+
+const MINUTES = Array.from({ length: 12 }, (_, i) => {
+  const val = (i * 5).toString().padStart(2, '0');
+  return { value: val, label: val };
+});
+
+const PERIOD_ICONS: Record<string, LucideIcon> = {
+  Morning: Sunrise,
+  Afternoon: Sun,
+  Evening: Sunset,
+  Night: Moon,
+};
+
+const PERIOD_COLORS: Record<string, string> = {
+  Morning: 'text-amber-500',
+  Afternoon: 'text-orange-500',
+  Evening: 'text-rose-500',
+  Night: 'text-indigo-500',
+};
 
 export default function SlotsPage() {
   return (
@@ -27,17 +70,20 @@ function SlotsContent() {
   const { slots, addSlot, removeSlot, clearPastSlots, addBulkSlots } = useSlots(specialist);
   const { appointments } = useAppointments(specialist?.id);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
-  const [showTimeDropdown, setShowTimeDropdown] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [customTime, setCustomTime] = useState('');
+  const [customHour, setCustomHour] = useState('');
+  const [customMinute, setCustomMinute] = useState('');
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const selectedDateStr = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : '';
   const slotsForDate = selectedDateStr ? (slots[selectedDateStr] || []) : [];
 
   const datesWithSlots = Object.keys(slots).map((d) => new Date(d + 'T00:00:00'));
 
-  // Dates that have booked appointments
   const datesWithBookings = useMemo(() => {
     const dateSet = new Set<string>();
     for (const apt of appointments) {
@@ -48,7 +94,6 @@ function SlotsContent() {
     return Array.from(dateSet).map((d) => new Date(d + 'T00:00:00'));
   }, [appointments]);
 
-  // Load booked slots for the selected date
   useEffect(() => {
     if (!specialist?.id || !selectedDateStr) {
       setBookedSlots([]);
@@ -57,12 +102,18 @@ function SlotsContent() {
     getBookedSlotsForSpecialist(specialist.id, selectedDateStr).then(setBookedSlots);
   }, [specialist?.id, selectedDateStr, appointments]);
 
+  const showToast = useCallback((message: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToastMessage(message);
+    toastTimerRef.current = setTimeout(() => setToastMessage(null), 2000);
+  }, []);
+
   const handleAddSlot = async (time: string) => {
     if (!selectedDateStr) return;
     setSaving(true);
     await addSlot(selectedDateStr, time);
     setSaving(false);
-    setShowTimeDropdown(false);
+    showToast('Slot added');
   };
 
   const handleRemoveSlot = async (time: string) => {
@@ -70,6 +121,7 @@ function SlotsContent() {
     setSaving(true);
     await removeSlot(selectedDateStr, time);
     setSaving(false);
+    showToast('Slot removed');
   };
 
   const handleAddPreset = async (presetKey: string) => {
@@ -78,66 +130,163 @@ function SlotsContent() {
     if (!preset) return;
     setSaving(true);
     const newSlots = preset.slots.filter((t) => !slotsForDate.includes(t));
-    if (newSlots.length > 0) await addBulkSlots(selectedDateStr, newSlots);
+    if (newSlots.length > 0) {
+      await addBulkSlots(selectedDateStr, newSlots);
+      showToast(`${newSlots.length} slot${newSlots.length !== 1 ? 's' : ''} added`);
+    }
     setSaving(false);
   };
+
+  const customTimeValue = customHour && customMinute ? `${customHour}:${customMinute}` : '';
 
   const handleAddCustomTime = async () => {
-    if (!selectedDateStr || !customTime) return;
-    if (slotsForDate.includes(customTime)) return;
+    if (!selectedDateStr || !customTimeValue) return;
+    if (slotsForDate.includes(customTimeValue)) return;
     setSaving(true);
-    await addSlot(selectedDateStr, customTime);
+    await addSlot(selectedDateStr, customTimeValue);
     setSaving(false);
-    setCustomTime('');
+    setCustomHour('');
+    setCustomMinute('');
+    showToast('Custom slot added');
   };
 
-  const handleClearPast = async () => {
+  const handleClearPastConfirmed = async () => {
     setSaving(true);
     await clearPastSlots();
     setSaving(false);
+    setShowClearConfirm(false);
+    showToast('Past slots cleared');
   };
 
-  const availableTimesToAdd = TIME_SLOTS.filter((t) => !slotsForDate.includes(t));
+  // Stats
   const totalSlotCount = Object.values(slots).reduce((sum, arr) => sum + arr.length, 0);
-  const totalBookedCount = bookedSlots.length;
+  const totalDays = Object.keys(slots).length;
+  const totalBookedForDate = bookedSlots.length;
+  const availableForDate = slotsForDate.length - totalBookedForDate;
+
+  // Preset status
+  const presetStatus = useMemo(() => {
+    return Object.entries(SLOT_PRESETS).map(([key, preset]) => {
+      const addedCount = preset.slots.filter((t) => slotsForDate.includes(t)).length;
+      return {
+        key,
+        label: preset.label.split('(')[0].trim(),
+        timeRange: preset.label.match(/\((.+)\)/)?.[1] || '',
+        total: preset.slots.length,
+        added: addedCount,
+        isFullyAdded: addedCount === preset.slots.length,
+      };
+    });
+  }, [slotsForDate]);
+
+  // Group slots by period for display
+  const groupedSlots = useMemo(() => {
+    const groups: Record<string, string[]> = {
+      Morning: [],
+      Afternoon: [],
+      Evening: [],
+      Night: [],
+    };
+    for (const time of slotsForDate) {
+      const period = getSlotPeriod(time);
+      groups[period].push(time);
+    }
+    return Object.entries(groups).filter(([, times]) => times.length > 0);
+  }, [slotsForDate]);
+
+  const isCustomTimeDuplicate = customTimeValue && slotsForDate.includes(customTimeValue);
+
+  if (!specialist) {
+    return (
+      <div className="flex min-h-screen bg-slate-50">
+        <PortalSidebar />
+        <main className="flex-1 p-4 sm:p-6 lg:p-8">
+          {/* Skeleton loading */}
+          <div className="mb-6 lg:mb-8">
+            <div className="h-7 w-48 bg-slate-200 rounded-lg animate-pulse mb-2" />
+            <div className="h-4 w-64 bg-slate-100 rounded animate-pulse" />
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="bg-white rounded-2xl p-5 border border-slate-100 animate-pulse">
+                <div className="h-3 w-20 bg-slate-200 rounded mb-3" />
+                <div className="h-8 w-12 bg-slate-200 rounded" />
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-4 lg:gap-6">
+            <div className="bg-white rounded-2xl border border-slate-200/60 p-6 h-[420px] animate-pulse" />
+            <div className="bg-white rounded-2xl border border-slate-200/60 p-6 h-[420px] animate-pulse" />
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-slate-50">
       <PortalSidebar />
-      <main className="flex-1 p-8">
+      <main className="flex-1 p-4 sm:p-6 lg:p-8">
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
         >
           {/* Header */}
-          <div className="flex items-center justify-between mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 lg:mb-8">
             <div>
-              <h1 className="text-2xl font-bold text-slate-900">Manage Slots</h1>
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Manage Slots</h1>
               <p className="text-sm text-slate-500 mt-1">
                 Set your available consultation times
               </p>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-slate-400">
-                {totalSlotCount} slot{totalSlotCount !== 1 ? 's' : ''} across{' '}
-                {Object.keys(slots).length} day{Object.keys(slots).length !== 1 ? 's' : ''}
-              </span>
-              <button
-                onClick={handleClearPast}
-                disabled={saving}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-xl hover:bg-red-100 transition-all disabled:opacity-50"
-              >
-                <Trash2 className="w-4 h-4" /> Clear Past
-              </button>
-            </div>
+            <button
+              onClick={() => setShowClearConfirm(true)}
+              disabled={saving || totalSlotCount === 0}
+              className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-red-600 bg-red-50 border border-red-200/60 rounded-xl hover:bg-red-100 transition-all disabled:opacity-40 disabled:cursor-not-allowed self-start sm:self-auto"
+            >
+              <Trash2 className="w-4 h-4" /> Clear Past Slots
+            </button>
+          </div>
+
+          {/* Stats Row */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+            <StatCard
+              title="Total Slots"
+              value={totalSlotCount}
+              icon={Clock}
+              color="violet"
+              subtitle={`across ${totalDays} day${totalDays !== 1 ? 's' : ''}`}
+            />
+            <StatCard
+              title="Available"
+              value={Math.max(0, availableForDate)}
+              icon={CalendarClock}
+              color="blue"
+              subtitle="selected date"
+            />
+            <StatCard
+              title="Booked"
+              value={totalBookedForDate}
+              icon={Users}
+              color="emerald"
+              subtitle="selected date"
+            />
+            <StatCard
+              title="Duration"
+              value={`${specialist?.sessionDurationMinutes ?? 30}m`}
+              icon={Timer}
+              color="amber"
+              subtitle="per session"
+            />
           </div>
 
           <ActiveSessionCard />
 
-          <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-6">
-            {/* Enhanced Calendar */}
-            <div className="bg-white rounded-2xl border border-slate-200/60 p-6">
+          {/* Main Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-4 lg:gap-6">
+            {/* Calendar Card */}
+            <div className="bg-white rounded-2xl border border-slate-200/60 p-4 sm:p-6">
               <SlotCalendar
                 selectedDate={selectedDate}
                 onSelect={setSelectedDate}
@@ -146,154 +295,239 @@ function SlotsContent() {
               />
             </div>
 
-            {/* Slot Editor */}
-            <div className="bg-white rounded-2xl border border-slate-200/60 p-6">
+            {/* Slot Editor Card */}
+            <div className="relative bg-white rounded-2xl border border-slate-200/60 p-4 sm:p-6 overflow-hidden">
+              {/* Toast */}
+              <AnimatePresence>
+                {toastMessage && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.2 }}
+                    className="absolute top-4 right-4 px-3 py-1.5 bg-emerald-500 text-white text-xs font-semibold rounded-lg shadow-lg z-10"
+                  >
+                    {toastMessage}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               {selectedDate ? (
                 <>
-                  <div className="flex items-center justify-between mb-4">
+                  {/* Date heading + Add button */}
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
                     <div>
-                      <h2 className="text-lg font-bold text-slate-900">
+                      <h2 className="text-base sm:text-lg font-bold text-slate-900">
                         {format(selectedDate, 'EEEE, MMMM d, yyyy')}
                       </h2>
-                      {totalBookedCount > 0 && (
+                      {totalBookedForDate > 0 && (
                         <p className="text-xs text-emerald-600 font-medium mt-0.5 flex items-center gap-1">
                           <Users className="w-3 h-3" />
-                          {totalBookedCount} booked session{totalBookedCount !== 1 ? 's' : ''} on this day
+                          {totalBookedForDate} booked session{totalBookedForDate !== 1 ? 's' : ''}
                         </p>
                       )}
                     </div>
-                    <div className="relative">
+                    <div className="relative self-start sm:self-auto">
                       <button
-                        onClick={() => setShowTimeDropdown(!showTimeDropdown)}
-                        disabled={saving || availableTimesToAdd.length === 0}
-                        className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                        onClick={() => setShowTimePicker(!showTimePicker)}
+                        disabled={saving}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         <Plus className="w-4 h-4" /> Add Slot
                       </button>
 
-                      {showTimeDropdown && (
-                        <div className="absolute right-0 top-full mt-2 w-52 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-10 max-h-72 overflow-y-auto">
-                          {(() => {
-                            let lastPeriod = '';
-                            return availableTimesToAdd.map((time) => {
-                              const period = getSlotPeriod(time);
-                              const showHeader = period !== lastPeriod;
-                              lastPeriod = period;
-                              const isBooked = bookedSlots.includes(time);
-                              return (
-                                <React.Fragment key={time}>
-                                  {showHeader && (
-                                    <div className="px-4 py-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider bg-slate-50 sticky top-0">
-                                      {period}
-                                    </div>
-                                  )}
-                                  <button
-                                    onClick={() => handleAddSlot(time)}
-                                    className={`w-full px-4 py-2 text-left text-sm transition-colors ${
-                                      isBooked
-                                        ? 'text-emerald-600 bg-emerald-50/50 hover:bg-emerald-50'
-                                        : 'text-slate-700 hover:bg-violet-50 hover:text-violet-700'
-                                    }`}
-                                  >
-                                    {time}
-                                    {isBooked && <span className="ml-2 text-[10px] text-emerald-500 font-medium">(booked)</span>}
-                                  </button>
-                                </React.Fragment>
-                              );
-                            });
-                          })()}
-                        </div>
-                      )}
+                      {/* Time Picker Grid */}
+                      <TimePickerGrid
+                        open={showTimePicker}
+                        onClose={() => setShowTimePicker(false)}
+                        allTimes={TIME_SLOTS}
+                        existingTimes={slotsForDate}
+                        bookedTimes={bookedSlots}
+                        onSelectTime={handleAddSlot}
+                        saving={saving}
+                      />
                     </div>
                   </div>
 
-                  {/* Quick Add Presets */}
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {Object.entries(SLOT_PRESETS).map(([key, preset]) => (
+                  {/* Preset Buttons */}
+                  <div className="grid grid-cols-2 xl:grid-cols-4 gap-2 mb-5">
+                    {presetStatus.map((preset) => (
                       <button
-                        key={key}
-                        onClick={() => handleAddPreset(key)}
-                        disabled={saving}
-                        className="px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-all disabled:opacity-50"
+                        key={preset.key}
+                        onClick={() => handleAddPreset(preset.key)}
+                        disabled={saving || preset.isFullyAdded}
+                        className={cn(
+                          'flex flex-col items-start px-2.5 py-2 rounded-xl border text-left transition-all min-w-0',
+                          preset.isFullyAdded
+                            ? 'bg-violet-50 border-violet-200/60 cursor-not-allowed opacity-60'
+                            : preset.added > 0
+                              ? 'bg-violet-50/50 border-violet-200/40 hover:bg-violet-50 hover:border-violet-300'
+                              : 'bg-white border-slate-200 hover:bg-violet-50 hover:border-violet-300'
+                        )}
                       >
-                        + {preset.label}
+                        <span className="text-xs font-semibold text-slate-700 truncate w-full">{preset.label}</span>
+                        <span className="text-[10px] text-slate-400 mt-0.5">
+                          {preset.isFullyAdded ? 'All added' : `${preset.added}/${preset.total} added`}
+                        </span>
+                        <div className="w-full h-1 bg-slate-100 rounded-full mt-1.5">
+                          <div
+                            className="h-1 bg-violet-500 rounded-full transition-all duration-300"
+                            style={{ width: `${(preset.added / preset.total) * 100}%` }}
+                          />
+                        </div>
                       </button>
                     ))}
                   </div>
 
                   {/* Custom Time Input */}
-                  <div className="flex items-center gap-2 mb-4">
-                    <input
-                      type="time"
-                      value={customTime}
-                      onChange={(e) => setCustomTime(e.target.value)}
-                      className="px-3 py-2 bg-slate-50/80 border border-slate-200 rounded-xl text-sm text-slate-900 focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 outline-none transition-all"
-                    />
-                    <button
-                      onClick={handleAddCustomTime}
-                      disabled={saving || !customTime || slotsForDate.includes(customTime)}
-                      className="px-4 py-2 text-sm font-medium bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      Add Custom
-                    </button>
+                  <div className="mb-5">
+                    <label className="text-xs font-medium text-slate-500 mb-1.5 block">Add custom time</label>
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 flex-1 p-2.5 bg-slate-50/80 rounded-xl border border-slate-200/60 min-w-0">
+                        <Clock className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                        <select
+                          value={customHour}
+                          onChange={(e) => setCustomHour(e.target.value)}
+                          className="bg-transparent text-sm text-slate-900 outline-none appearance-none cursor-pointer flex-1 min-w-0"
+                        >
+                          <option value="" disabled>HH</option>
+                          {HOURS.map((h) => (
+                            <option key={h.value} value={h.value}>{h.label}</option>
+                          ))}
+                        </select>
+                        <span className="text-slate-300 text-sm font-bold">:</span>
+                        <select
+                          value={customMinute}
+                          onChange={(e) => setCustomMinute(e.target.value)}
+                          className="bg-transparent text-sm text-slate-900 outline-none appearance-none cursor-pointer flex-1 min-w-0"
+                        >
+                          <option value="" disabled>MM</option>
+                          {MINUTES.map((m) => (
+                            <option key={m.value} value={m.value}>{m.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <button
+                        onClick={handleAddCustomTime}
+                        disabled={saving || !customTimeValue || !!isCustomTimeDuplicate}
+                        className="px-3 py-2.5 text-xs font-semibold bg-violet-600 text-white rounded-xl hover:bg-violet-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                      >
+                        Add
+                      </button>
+                    </div>
+                    {isCustomTimeDuplicate && (
+                      <p className="text-xs text-red-500 mt-1.5 ml-1">This time is already added</p>
+                    )}
                   </div>
 
-                  {/* Time Slots Grid */}
+                  {/* Grouped Slot Display */}
                   {slotsForDate.length > 0 ? (
-                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                      {slotsForDate.map((time) => {
-                        const isBooked = bookedSlots.includes(time);
-                        return (
-                          <div
-                            key={time}
-                            className={`group flex items-center justify-between px-3 py-2.5 rounded-xl border ${
-                              isBooked
-                                ? 'bg-emerald-50 border-emerald-200/60'
-                                : 'bg-violet-50 border-violet-200/60'
-                            }`}
-                          >
-                            <span className={`flex items-center gap-2 text-sm font-medium ${
-                              isBooked ? 'text-emerald-700' : 'text-violet-700'
-                            }`}>
-                              <Clock className="w-3.5 h-3.5" />
-                              {time}
-                              {isBooked && (
-                                <span className="text-[10px] bg-emerald-100 text-emerald-600 px-1 py-0.5 rounded font-semibold">
-                                  BOOKED
+                    <div className="space-y-5">
+                      <AnimatePresence mode="popLayout">
+                        {groupedSlots.map(([period, times]) => {
+                          const PeriodIcon = PERIOD_ICONS[period] || Clock;
+                          const periodColor = PERIOD_COLORS[period] || 'text-slate-500';
+                          return (
+                            <motion.div
+                              key={period}
+                              initial={{ opacity: 0, y: 8 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -8 }}
+                              transition={{ duration: 0.25 }}
+                            >
+                              <div className="flex items-center gap-2 mb-2.5">
+                                <PeriodIcon className={cn('w-4 h-4', periodColor)} />
+                                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                                  {period}
                                 </span>
-                              )}
-                            </span>
-                            {!isBooked && (
-                              <button
-                                onClick={() => handleRemoveSlot(time)}
-                                disabled={saving}
-                                className="opacity-0 group-hover:opacity-100 p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-all"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
+                                <span className="text-[10px] text-slate-300 font-medium">
+                                  ({times.length} slot{times.length !== 1 ? 's' : ''})
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <AnimatePresence mode="popLayout">
+                                  {times.map((time) => {
+                                    const isBooked = bookedSlots.includes(time);
+                                    return (
+                                      <motion.div
+                                        key={time}
+                                        layout
+                                        initial={{ opacity: 0, scale: 0.9 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        exit={{ opacity: 0, scale: 0.9 }}
+                                        transition={{ duration: 0.2 }}
+                                        className={cn(
+                                          'group flex items-center gap-1.5 px-3 py-2 rounded-xl border',
+                                          isBooked
+                                            ? 'bg-emerald-50 border-emerald-200/60'
+                                            : 'bg-violet-50 border-violet-200/60'
+                                        )}
+                                      >
+                                        <Clock className={cn('w-3.5 h-3.5 flex-shrink-0', isBooked ? 'text-emerald-600' : 'text-violet-600')} />
+                                        <span className={cn('text-sm font-medium whitespace-nowrap', isBooked ? 'text-emerald-700' : 'text-violet-700')}>
+                                          {time}
+                                        </span>
+                                        {isBooked && (
+                                          <span className="text-[10px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded font-semibold whitespace-nowrap">
+                                            BOOKED
+                                          </span>
+                                        )}
+                                        {!isBooked && (
+                                          <button
+                                            onClick={() => handleRemoveSlot(time)}
+                                            disabled={saving}
+                                            className="opacity-0 group-hover:opacity-100 p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-all flex-shrink-0"
+                                          >
+                                            <X className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                      </motion.div>
+                                    );
+                                  })}
+                                </AnimatePresence>
+                              </div>
+                            </motion.div>
+                          );
+                        })}
+                      </AnimatePresence>
                     </div>
                   ) : (
                     <div className="text-center py-16">
-                      <CalendarClock className="w-12 h-12 text-slate-200 mx-auto mb-3" />
-                      <p className="text-sm text-slate-500">No slots set for this date</p>
-                      <p className="text-xs text-slate-400 mt-1">Click &quot;Add Slot&quot; or use quick-add buttons above</p>
+                      <div className="w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-2xl flex items-center justify-center">
+                        <CalendarClock className="w-8 h-8 text-slate-300" />
+                      </div>
+                      <p className="text-sm font-medium text-slate-500">No slots set for this date</p>
+                      <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
+                        Click &quot;Add Slot&quot; to pick times, or use the preset buttons to quickly add common time blocks
+                      </p>
                     </div>
                   )}
                 </>
               ) : (
                 <div className="text-center py-16">
-                  <CalendarClock className="w-12 h-12 text-slate-200 mx-auto mb-3" />
-                  <p className="text-sm text-slate-500">Select a date to manage slots</p>
+                  <div className="w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-2xl flex items-center justify-center">
+                    <CalendarClock className="w-8 h-8 text-slate-300" />
+                  </div>
+                  <p className="text-sm font-medium text-slate-500">Select a date to manage slots</p>
                 </div>
               )}
             </div>
           </div>
         </motion.div>
       </main>
+
+      {/* Clear Past Confirmation Dialog */}
+      <ConfirmDialog
+        open={showClearConfirm}
+        onClose={() => setShowClearConfirm(false)}
+        onConfirm={handleClearPastConfirmed}
+        title="Clear Past Slots"
+        description="This will remove all time slots for dates that have already passed. This action cannot be undone."
+        confirmLabel="Clear Past Slots"
+        cancelLabel="Keep"
+        variant="danger"
+        loading={saving}
+      />
     </div>
   );
 }
