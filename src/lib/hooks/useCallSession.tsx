@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ExternalE2EEKeyProvider, Room } from 'livekit-client';
 import { LiveKitRoom, VideoConference } from '@livekit/components-react';
@@ -29,6 +29,7 @@ interface CallSessionState {
   startCall: (params: StartCallParams) => Promise<void>;
   endCall: () => void;
   handleDisconnected: () => void;
+  hasBeenInSession: (appointmentId: string) => boolean;
 }
 
 // ── Context ─────────────────────────────────────────────────────────
@@ -56,11 +57,34 @@ export function CallSessionProvider({ children }: { children: React.ReactNode })
   // React renders into it via createPortal, consultation page moves it into its container.
   const [videoPortalHost] = useState<HTMLDivElement | null>(() => {
     if (typeof document === 'undefined') return null;
-    return document.createElement('div');
+    const el = document.createElement('div');
+    el.setAttribute('data-lk-theme', 'default');
+    return el;
   });
+
+  // Hidden container keeps the portal host always in the DOM — even during navigation.
+  // Without this, host.remove() detaches LiveKit's <video>/<canvas> elements,
+  // causing frozen frames and 100% CPU when reattaching.
+  const hiddenContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (videoPortalHost && hiddenContainerRef.current) {
+      if (!videoPortalHost.parentElement) {
+        hiddenContainerRef.current.appendChild(videoPortalHost);
+      }
+    }
+  }, [videoPortalHost]);
 
   // Track the current room to avoid stale closures
   const roomRef = useRef<Room | null>(null);
+
+  // Track which appointments the doctor has connected to (persists across navigation).
+  // Used to distinguish "doctor never connected" from "doctor connected then disconnected".
+  const connectedIdsRef = useRef(new Set<string>());
+
+  const hasBeenInSession = useCallback((appointmentId: string) => {
+    return connectedIdsRef.current.has(appointmentId);
+  }, []);
 
   const startCall = useCallback(async (params: StartCallParams) => {
     // Disconnect any existing room first
@@ -99,6 +123,7 @@ export function CallSessionProvider({ children }: { children: React.ReactNode })
       }
 
       roomRef.current = newRoom;
+      connectedIdsRef.current.add(params.appointmentId);
       setRoom(newRoom);
       setCallToken(params.token);
       setE2eeKey(params.e2eeKey ?? null);
@@ -112,7 +137,11 @@ export function CallSessionProvider({ children }: { children: React.ReactNode })
   }, []);
 
   const endCall = useCallback(() => {
+    const currentRoom = roomRef.current;
     roomRef.current = null;
+    if (currentRoom) {
+      try { currentRoom.disconnect(); } catch {}
+    }
     setRoom(null);
     setCallToken(null);
     setE2eeKey(null);
@@ -123,7 +152,11 @@ export function CallSessionProvider({ children }: { children: React.ReactNode })
   }, []);
 
   const handleDisconnected = useCallback(() => {
+    const currentRoom = roomRef.current;
     roomRef.current = null;
+    if (currentRoom) {
+      try { currentRoom.disconnect(); } catch {}
+    }
     setRoom(null);
     setCallToken(null);
     setE2eeKey(null);
@@ -136,23 +169,49 @@ export function CallSessionProvider({ children }: { children: React.ReactNode })
 
   const isAudio = activeAppointment?.consultationType === 'audio';
 
+  const contextValue = useMemo<CallSessionState>(() => ({
+    activeAppointmentId,
+    activeAppointment,
+    isConnected,
+    room,
+    callToken,
+    e2eeKey,
+    sessionE2ee,
+    videoPortalHost,
+    startCall,
+    endCall,
+    handleDisconnected,
+    hasBeenInSession,
+  }), [
+    activeAppointmentId,
+    activeAppointment,
+    isConnected,
+    room,
+    callToken,
+    e2eeKey,
+    sessionE2ee,
+    videoPortalHost,
+    startCall,
+    endCall,
+    handleDisconnected,
+    hasBeenInSession,
+  ]);
+
   return (
-    <CallSessionContext.Provider
-      value={{
-        activeAppointmentId,
-        activeAppointment,
-        isConnected,
-        room,
-        callToken,
-        e2eeKey,
-        sessionE2ee,
-        videoPortalHost,
-        startCall,
-        endCall,
-        handleDisconnected,
-      }}
-    >
-      {isConnected && room && callToken ? (
+    <CallSessionContext.Provider value={contextValue}>
+      {/* Hidden parking container — portal host lives here when not visible.
+          Keeps LiveKit video/canvas elements in the DOM across page navigations. */}
+      <div
+        ref={hiddenContainerRef}
+        data-portal-parking
+        style={{ position: 'fixed', top: '-9999px', left: '-9999px', width: '1px', height: '1px', overflow: 'hidden', pointerEvents: 'none' }}
+        aria-hidden="true"
+      />
+      {/* LiveKitRoom rendered separately — NEVER wraps {children}.
+          Wrapping children conditionally causes React to unmount/remount the
+          entire child tree when isConnected changes, resetting all local state
+          and refs in child components (the root cause of the rejoin loop). */}
+      {isConnected && room && callToken && (
         <LiveKitRoom
           serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
           token={callToken}
@@ -164,11 +223,9 @@ export function CallSessionProvider({ children }: { children: React.ReactNode })
           data-lk-theme="default"
         >
           {videoPortalHost && createPortal(<VideoConference />, videoPortalHost)}
-          {children}
         </LiveKitRoom>
-      ) : (
-        children
       )}
+      {children}
     </CallSessionContext.Provider>
   );
 }
