@@ -31,17 +31,8 @@ import { TIME_SLOTS, SLOT_PRESETS, getSlotPeriod } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import type { LucideIcon } from 'lucide-react';
 
-const HOURS = Array.from({ length: 24 }, (_, i) => {
-  const val = i.toString().padStart(2, '0');
-  const h12 = i === 0 ? 12 : i > 12 ? i - 12 : i;
-  const ampm = i < 12 ? 'AM' : 'PM';
-  return { value: val, label: `${h12} ${ampm}` };
-});
-
-const MINUTES = Array.from({ length: 12 }, (_, i) => {
-  const val = (i * 5).toString().padStart(2, '0');
-  return { value: val, label: val };
-});
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
+const MINUTE_OPTIONS = Array.from({ length: 12 }, (_, i) => (i * 5).toString().padStart(2, '0'));
 
 const PERIOD_ICONS: Record<string, LucideIcon> = {
   Morning: Sunrise,
@@ -137,7 +128,44 @@ function SlotsContent() {
     setSaving(false);
   };
 
-  const customTimeValue = customHour && customMinute ? `${customHour}:${customMinute}` : '';
+  const parseAndPadHour = (val: string): string => {
+    const digits = val.replace(/\D/g, '').slice(0, 2);
+    if (!digits) return '';
+    const num = Math.min(parseInt(digits, 10), 23);
+    return num.toString().padStart(2, '0');
+  };
+
+  const parseAndPadMinute = (val: string): string => {
+    const digits = val.replace(/\D/g, '').slice(0, 2);
+    if (!digits) return '';
+    const num = Math.min(parseInt(digits, 10), 59);
+    return num.toString().padStart(2, '0');
+  };
+
+  const handleHourChange = (val: string) => {
+    const cleaned = val.replace(/\D/g, '').slice(0, 2);
+    setCustomHour(cleaned);
+    if (cleaned && !customMinute) {
+      setCustomMinute('00');
+    }
+  };
+
+  const handleHourBlur = () => {
+    if (customHour) setCustomHour(parseAndPadHour(customHour));
+  };
+
+  const handleMinuteChange = (val: string) => {
+    const cleaned = val.replace(/\D/g, '').slice(0, 2);
+    setCustomMinute(cleaned);
+  };
+
+  const handleMinuteBlur = () => {
+    if (customMinute) setCustomMinute(parseAndPadMinute(customMinute));
+  };
+
+  const paddedHour = customHour ? parseAndPadHour(customHour) : '';
+  const paddedMinute = customMinute ? parseAndPadMinute(customMinute) : '';
+  const customTimeValue = paddedHour && paddedMinute ? `${paddedHour}:${paddedMinute}` : '';
 
   const handleAddCustomTime = async () => {
     if (!selectedDateStr || !customTimeValue) return;
@@ -382,35 +410,45 @@ function SlotsContent() {
                   {/* Custom Time Input */}
                   <div className="mb-5">
                     <label className="text-xs font-medium text-slate-500 mb-1.5 block">Add custom time</label>
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center gap-1.5 flex-1 p-2.5 bg-slate-50/80 rounded-xl border border-slate-200/60 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-2.5 bg-slate-50/80 rounded-xl border border-slate-200/60">
                         <Clock className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                        <select
+                        <input
+                          type="text"
+                          list="hour-options"
                           value={customHour}
-                          onChange={(e) => setCustomHour(e.target.value)}
-                          className="bg-transparent text-sm text-slate-900 outline-none appearance-none cursor-pointer flex-1 min-w-0"
-                        >
-                          <option value="" disabled>HH</option>
-                          {HOURS.map((h) => (
-                            <option key={h.value} value={h.value}>{h.label}</option>
+                          onChange={(e) => handleHourChange(e.target.value)}
+                          onBlur={handleHourBlur}
+                          placeholder="HH"
+                          maxLength={2}
+                          className="bg-transparent text-sm font-medium text-slate-900 outline-none w-12 text-center tabular-nums placeholder:text-slate-300"
+                        />
+                        <datalist id="hour-options">
+                          {HOUR_OPTIONS.map((h) => (
+                            <option key={h} value={h} />
                           ))}
-                        </select>
-                        <span className="text-slate-300 text-sm font-bold">:</span>
-                        <select
+                        </datalist>
+                        <span className="text-slate-300 text-sm font-bold select-none">:</span>
+                        <input
+                          type="text"
+                          list="minute-options"
                           value={customMinute}
-                          onChange={(e) => setCustomMinute(e.target.value)}
-                          className="bg-transparent text-sm text-slate-900 outline-none appearance-none cursor-pointer flex-1 min-w-0"
-                        >
-                          <option value="" disabled>MM</option>
-                          {MINUTES.map((m) => (
-                            <option key={m.value} value={m.value}>{m.label}</option>
+                          onChange={(e) => handleMinuteChange(e.target.value)}
+                          onBlur={handleMinuteBlur}
+                          placeholder="MM"
+                          maxLength={2}
+                          className="bg-transparent text-sm font-medium text-slate-900 outline-none w-12 text-center tabular-nums placeholder:text-slate-300"
+                        />
+                        <datalist id="minute-options">
+                          {MINUTE_OPTIONS.map((m) => (
+                            <option key={m} value={m} />
                           ))}
-                        </select>
+                        </datalist>
                       </div>
                       <button
                         onClick={handleAddCustomTime}
                         disabled={saving || !customTimeValue || !!isCustomTimeDuplicate}
-                        className="px-3 py-2.5 text-xs font-semibold bg-violet-600 text-white rounded-xl hover:bg-violet-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                        className="px-4 py-2.5 text-xs font-semibold bg-violet-600 text-white rounded-xl hover:bg-violet-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
                       >
                         Add
                       </button>
