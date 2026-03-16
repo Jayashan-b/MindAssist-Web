@@ -200,15 +200,11 @@ function ConsultationView({ appointment, userId, specialist, appointments }: Con
     prevShowCall.current = showCall;
   }, [showCall]);
 
-  // Track whether doctor has ever been in the call for this appointment.
-  // Distinguishes "doctor never connected" from "doctor connected then disconnected".
-  const hasBeenInCall = useRef(false);
-  useEffect(() => {
-    if (showCall) hasBeenInCall.current = true;
-  }, [showCall]);
-
   // Engine phase for UI rendering (single source of truth)
-  const enginePhase = getSessionPhase(appointment, now, { isInCall: showCall }).phase;
+  const enginePhase = getSessionPhase(appointment, now, {
+    isInCall: showCall,
+    hasBeenInSession: callSession.hasBeenInSession(appointment.id),
+  }).phase;
 
   // Styled end-session modal
   const [showEndConfirm, setShowEndConfirm] = useState(false);
@@ -219,17 +215,6 @@ function ConsultationView({ appointment, userId, specialist, appointments }: Con
 
   // Doctor is waiting for patient when: room opened but E2EE not yet resolved
   const isPatientE2eeResolved = appointment.sessionE2ee !== undefined && appointment.sessionE2ee !== null;
-
-  // Override: when the engine says "disconnected" but the doctor hasn't connected to LiveKit yet
-  // (patient's Flutter app set status to inProgress before doctor clicked "Start Session"),
-  // show patientReady phase instead so the "Start Session" button persists.
-  const effectivePhase = (
-    enginePhase === 'disconnected' &&
-    isPatientE2eeResolved &&
-    !showCall &&
-    !callSession.isConnected &&
-    !hasBeenInCall.current
-  ) ? 'patientReady' : enginePhase;
 
   const waitingForPatient = hasDoctorJoined && !hasDoctorLeft && !isSessionEnded && !isLegacyJitsi && !showCall && !isPatientE2eeResolved && !patientReady;
 
@@ -393,7 +378,7 @@ function ConsultationView({ appointment, userId, specialist, appointments }: Con
             In Session
           </span>
         )}
-        {effectivePhase === 'disconnected' && !showCall && (
+        {enginePhase === 'disconnected' && !showCall && (
           <span className="ml-auto px-3 py-1 rounded-lg text-xs font-semibold bg-red-100 text-red-700">
             Reconnect
           </span>
@@ -435,21 +420,21 @@ function ConsultationView({ appointment, userId, specialist, appointments }: Con
         <div className="lg:col-span-1 space-y-4">
           {/* Session Controls Card */}
           <div className={`p-5 rounded-2xl border ${
-            effectivePhase === 'roomOpen'
+            enginePhase === 'roomOpen'
               ? 'bg-blue-50 border-blue-200 ring-1 ring-blue-200/40'
-              : effectivePhase === 'patientReady'
+              : enginePhase === 'patientReady'
                 ? 'bg-emerald-50 border-emerald-200 ring-1 ring-emerald-200/40'
-                : effectivePhase === 'disconnected'
+                : enginePhase === 'disconnected'
                   ? 'bg-red-50 border-red-200 ring-1 ring-red-200/40'
-                  : effectivePhase === 'canOpenRoom'
+                  : enginePhase === 'canOpenRoom'
                     ? 'bg-violet-50 border-violet-200 ring-1 ring-violet-200/40'
                     : 'bg-white border-slate-200'
           }`}>
             <div className="flex items-center gap-2 mb-3">
               <CallIcon className={`w-5 h-5 ${
-                effectivePhase === 'roomOpen' ? 'text-blue-600'
-                : effectivePhase === 'patientReady' || effectivePhase === 'disconnected' ? 'text-emerald-600'
-                : effectivePhase === 'canOpenRoom' ? 'text-violet-600'
+                enginePhase === 'roomOpen' ? 'text-blue-600'
+                : enginePhase === 'patientReady' || enginePhase === 'disconnected' ? 'text-emerald-600'
+                : enginePhase === 'canOpenRoom' ? 'text-violet-600'
                 : 'text-slate-400'
               }`} />
               <h3 className="font-semibold text-sm text-slate-800">Session Controls</h3>
@@ -472,7 +457,7 @@ function ConsultationView({ appointment, userId, specialist, appointments }: Con
             )}
 
             {/* Waiting for Patient */}
-            {effectivePhase === 'roomOpen' && !showCall && (
+            {enginePhase === 'roomOpen' && !showCall && (
               <div>
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
@@ -484,7 +469,7 @@ function ConsultationView({ appointment, userId, specialist, appointments }: Con
             )}
 
             {/* Patient Ready — Start Session */}
-            {effectivePhase === 'patientReady' && !showCall && (
+            {enginePhase === 'patientReady' && !showCall && (
               <div>
                 <div className="flex items-center gap-3 mb-3">
                   <UserCheck className="w-5 h-5 text-emerald-600" />
@@ -502,7 +487,7 @@ function ConsultationView({ appointment, userId, specialist, appointments }: Con
             )}
 
             {/* Rejoin Call (shows after disconnect) */}
-            {effectivePhase === 'disconnected' && !showCall && (
+            {enginePhase === 'disconnected' && !showCall && (
               isLegacyJitsi ? (
                 <a
                   href={appointment.meetingUrl!}
@@ -534,7 +519,7 @@ function ConsultationView({ appointment, userId, specialist, appointments }: Con
             )}
 
             {/* Not yet in join window */}
-            {(effectivePhase === 'idle' || effectivePhase === 'approaching') && !showCall && (
+            {(enginePhase === 'idle' || enginePhase === 'approaching') && !showCall && (
               <div className="flex items-center gap-2 text-sm text-amber-600">
                 <AlertCircle className="w-4 h-4" />
                 {minutesBefore > JOIN_WINDOW_MINUTES

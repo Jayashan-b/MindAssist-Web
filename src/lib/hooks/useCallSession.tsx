@@ -29,6 +29,7 @@ interface CallSessionState {
   startCall: (params: StartCallParams) => Promise<void>;
   endCall: () => void;
   handleDisconnected: () => void;
+  hasBeenInSession: (appointmentId: string) => boolean;
 }
 
 // ── Context ─────────────────────────────────────────────────────────
@@ -75,6 +76,14 @@ export function CallSessionProvider({ children }: { children: React.ReactNode })
   // Track the current room to avoid stale closures
   const roomRef = useRef<Room | null>(null);
 
+  // Track which appointments the doctor has connected to (persists across navigation).
+  // Used to distinguish "doctor never connected" from "doctor connected then disconnected".
+  const connectedIdsRef = useRef(new Set<string>());
+
+  const hasBeenInSession = useCallback((appointmentId: string) => {
+    return connectedIdsRef.current.has(appointmentId);
+  }, []);
+
   const startCall = useCallback(async (params: StartCallParams) => {
     // Disconnect any existing room first
     if (roomRef.current) {
@@ -112,6 +121,7 @@ export function CallSessionProvider({ children }: { children: React.ReactNode })
       }
 
       roomRef.current = newRoom;
+      connectedIdsRef.current.add(params.appointmentId);
       setRoom(newRoom);
       setCallToken(params.token);
       setE2eeKey(params.e2eeKey ?? null);
@@ -169,6 +179,7 @@ export function CallSessionProvider({ children }: { children: React.ReactNode })
     startCall,
     endCall,
     handleDisconnected,
+    hasBeenInSession,
   }), [
     activeAppointmentId,
     activeAppointment,
@@ -181,6 +192,7 @@ export function CallSessionProvider({ children }: { children: React.ReactNode })
     startCall,
     endCall,
     handleDisconnected,
+    hasBeenInSession,
   ]);
 
   return (
