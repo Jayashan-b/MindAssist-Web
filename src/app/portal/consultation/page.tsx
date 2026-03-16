@@ -201,7 +201,10 @@ function ConsultationView({ appointment, userId, specialist, appointments }: Con
   }, [showCall]);
 
   // Engine phase for UI rendering (single source of truth)
-  const enginePhase = getSessionPhase(appointment, now, { isInCall: showCall }).phase;
+  const enginePhase = getSessionPhase(appointment, now, {
+    isInCall: showCall,
+    hasBeenInSession: callSession.hasBeenInSession(appointment.id),
+  }).phase;
 
   // Styled end-session modal
   const [showEndConfirm, setShowEndConfirm] = useState(false);
@@ -212,6 +215,7 @@ function ConsultationView({ appointment, userId, specialist, appointments }: Con
 
   // Doctor is waiting for patient when: room opened but E2EE not yet resolved
   const isPatientE2eeResolved = appointment.sessionE2ee !== undefined && appointment.sessionE2ee !== null;
+
   const waitingForPatient = hasDoctorJoined && !hasDoctorLeft && !isSessionEnded && !isLegacyJitsi && !showCall && !isPatientE2eeResolved && !patientReady;
 
   const displayName = appointment.anonymousMode

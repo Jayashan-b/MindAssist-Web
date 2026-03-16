@@ -8,6 +8,7 @@ import type { Appointment } from '@/lib/types';
 import { markDoctorJoined } from '@/lib/firestore';
 import { supportsE2EE } from '@/lib/e2ee';
 import { getSessionPhase, getCardBackground } from '@/lib/consultation-session';
+import { useCallSession } from '@/lib/hooks/useCallSession';
 import PatientAvatar from './PatientAvatar';
 import CancelAppointmentDialog from './CancelAppointmentDialog';
 
@@ -22,13 +23,17 @@ export default function AppointmentCard({ appointment, showJoinLink = true, onVi
   const [now, setNow] = useState(new Date());
   const [starting, setStarting] = useState(false);
   const [showCancel, setShowCancel] = useState(false);
+  const callSession = useCallSession();
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(interval);
   }, []);
 
-  const { phase, badge, primaryAction, canCancel } = getSessionPhase(appointment, now, { isStillConnected });
+  const { phase, badge, primaryAction, canCancel } = getSessionPhase(appointment, now, {
+    isStillConnected,
+    hasBeenInSession: callSession.hasBeenInSession(appointment.id),
+  });
 
   const displayName = appointment.anonymousMode
     ? appointment.anonymousAlias || 'Anonymous'

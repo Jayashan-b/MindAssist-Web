@@ -49,6 +49,8 @@ interface SessionPhaseOptions {
   isInCall?: boolean;
   /** Whether the doctor's LiveKit Room is still connected (browsing another page) */
   isStillConnected?: boolean;
+  /** Whether the doctor has ever connected to LiveKit for this appointment (client-side tracking) */
+  hasBeenInSession?: boolean;
 }
 
 // ── Core engine ─────────────────────────────────────────────────────
@@ -58,7 +60,7 @@ export function getSessionPhase(
   now: Date,
   options: SessionPhaseOptions = {},
 ): SessionPhaseInfo {
-  const { isInCall = false, isStillConnected = false } = options;
+  const { isInCall = false, isStillConnected = false, hasBeenInSession } = options;
 
   const scheduledDate = new Date(appointment.scheduledAt);
   const minutesBefore = differenceInMinutes(scheduledDate, now);
@@ -145,21 +147,26 @@ export function getSessionPhase(
   }
 
   // ── 4. Disconnected (mid-session, call not active) ────────────────
+  // Skip when we KNOW the doctor hasn't connected yet but the patient has joined
+  // (Flutter patient sets status to 'inProgress' before doctor clicks "Start Session").
+  // When hasBeenInSession is undefined (default), the guard doesn't apply — backward compatible.
   if (appointment.status === 'inProgress' && hasDoctorJoined && !hasDoctorLeft && isValidRoom) {
-    return {
-      ...base,
-      phase: 'disconnected',
-      badge: { text: 'Reconnect', className: 'bg-red-100 text-red-700' },
-      primaryAction: {
-        label: `Rejoin ${isAudio ? 'Audio' : 'Video'} Session`,
-        className: 'bg-emerald-600 hover:bg-emerald-700 text-white',
-        href: `${consultationHref}&action=rejoin`,
-        action: 'rejoinSession',
-      },
-      canCancel: false,
-      canEnd: true,
-      bannerText: 'Session interrupted — rejoin now',
-    };
+    if (!(hasBeenInSession === false && isPatientE2eeResolved)) {
+      return {
+        ...base,
+        phase: 'disconnected',
+        badge: { text: 'Reconnect', className: 'bg-red-100 text-red-700' },
+        primaryAction: {
+          label: `Rejoin ${isAudio ? 'Audio' : 'Video'} Session`,
+          className: 'bg-emerald-600 hover:bg-emerald-700 text-white',
+          href: `${consultationHref}&action=rejoin`,
+          action: 'rejoinSession',
+        },
+        canCancel: false,
+        canEnd: true,
+        bannerText: 'Session interrupted — rejoin now',
+      };
+    }
   }
 
   // ── 5. Patient Ready (E2EE resolved, waiting for doctor to start) ─
