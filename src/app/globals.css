@@ -16,18 +16,358 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* LiveKit chat panel overflow fix — prevent horizontal scroll when chat opens */
+/* ── LiveKit Brand Theme — violet/slate medical palette ────────── */
+
+[data-lk-theme="default"] {
+  --lk-bg: #0f0f14;
+  --lk-bg2: #1a1a24;
+  --lk-bg3: #24243a;
+  --lk-bg4: #2e2e4a;
+  --lk-bg5: #3d3d5c;
+  --lk-fg: #f8fafc;
+  --lk-fg2: #e2e8f0;
+  --lk-fg3: #cbd5e1;
+  --lk-border-color: rgba(139, 92, 246, 0.12);
+  --lk-accent-bg: #7c3aed;
+  --lk-accent2: #8b5cf6;
+  --lk-accent3: #a78bfa;
+  --lk-danger: #ef4444;
+  --lk-success: #10b981;
+  --lk-control-bg: rgba(15, 15, 20, 0.85);
+  --lk-control-hover-bg: rgba(36, 36, 58, 0.9);
+  --lk-border-radius: 0.75rem;
+}
+
+/* ── Floating Control Bar — frosted glass pill ─────────────────── */
+
+.lk-control-bar {
+  border-top: none !important;
+  background: rgba(15, 15, 20, 0.75) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border-radius: 1rem !important;
+  margin: 0 auto 1rem !important;
+  padding: 0.625rem 1.25rem !important;
+  width: fit-content !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+  position: relative !important;
+  gap: 0.625rem !important;
+}
+
+.lk-control-bar .lk-button {
+  border-radius: 0.625rem !important;
+  transition: all 0.2s ease !important;
+}
+
+.lk-control-bar .lk-button:hover {
+  transform: translateY(-1px) !important;
+}
+
+/* Chat button — balanced padding */
+.lk-control-bar .lk-chat-toggle {
+  padding-left: 1rem !important;
+  padding-right: 1rem !important;
+}
+
+/* Leave button — separated with left margin for visual breathing room */
+.lk-control-bar .lk-disconnect-button {
+  background: linear-gradient(to right, #ef4444, #dc2626) !important;
+  color: #fff !important;
+  border-radius: 0.625rem !important;
+  margin-left: 1.5rem !important;
+  padding-left: 1rem !important;
+  padding-right: 1rem !important;
+}
+
+/* Hide share screen — not needed for consultations */
+.lk-control-bar .lk-button[data-lk-source="screen_share"] {
+  display: none !important;
+}
+
+/* ── Participant Tiles — rounded, modern ───────────────────────── */
+
+.lk-participant-tile {
+  border-radius: 0.75rem !important;
+  overflow: hidden !important;
+}
+
+.lk-participant-name {
+  background: rgba(0, 0, 0, 0.5) !important;
+  backdrop-filter: blur(8px) !important;
+  border-radius: 0.5rem !important;
+  padding: 0.25rem 0.5rem !important;
+  font-size: 0.75rem !important;
+}
+
+/* ── Chat Panel — Modern WhatsApp / iMessage Style ───────────── */
+
+.lk-chat {
+  background: rgba(20, 20, 28, 0.85) !important;
+  backdrop-filter: blur(40px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(40px) saturate(180%) !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.06) !important;
+  max-width: 320px;
+  flex-shrink: 1;
+}
+
+/* ── Header — patient name, centered ─────────────────────────── */
+
+.lk-chat .lk-chat-header {
+  padding: 0.5rem 1rem !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+  font-weight: 600 !important;
+  font-size: 0.875rem !important;
+  text-align: center !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+  letter-spacing: 0.01em !important;
+}
+
+.lk-chat .lk-close-button {
+  opacity: 0.4 !important;
+}
+.lk-chat .lk-close-button:hover {
+  opacity: 0.75 !important;
+}
+
+/* ── Message list ────────────────────────────────────────────── */
+
+.lk-chat .lk-chat-messages {
+  padding: 0.625rem 0.625rem !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+}
+
+/* ── Chat bubbles — modern, tight ────────────────────────────── */
+
+.lk-chat .lk-chat-entry {
+  display: flex !important;
+  flex-direction: column !important;
+  position: relative !important;
+  padding: 0 !important;
+  margin-bottom: 0 !important;
+  border: none !important;
+  max-width: 80% !important;
+  width: fit-content !important;
+  background: none !important;
+  border-radius: 0 !important;
+  transition: opacity 0.15s ease !important;
+}
+
+/* Move timestamp below message body */
+.lk-chat .lk-chat-entry .lk-meta-data {
+  order: 2 !important;
+}
+.lk-chat .lk-chat-entry .lk-message-body {
+  order: 1 !important;
+}
+
+/* Own messages — right */
+.lk-chat .lk-chat-entry[data-lk-message-origin="local"] {
+  align-self: flex-end !important;
+}
+
+/* Their messages — left */
+.lk-chat .lk-chat-entry[data-lk-message-origin="remote"] {
+  align-self: flex-start !important;
+}
+
+/* ── Consecutive bubble corners (iMessage tail) ──────────────── */
+
+.lk-chat .lk-chat-entry[data-lk-message-origin="local"] + .lk-chat-entry[data-lk-message-origin="local"] .lk-message-body {
+  border-bottom-right-radius: 4px !important;
+  border-top-right-radius: 4px !important;
+}
+.lk-chat .lk-chat-entry[data-lk-message-origin="remote"] + .lk-chat-entry[data-lk-message-origin="remote"] .lk-message-body {
+  border-bottom-left-radius: 4px !important;
+  border-top-left-radius: 4px !important;
+}
+
+/* Gap between different senders */
+.lk-chat .lk-chat-entry[data-lk-message-origin="local"] + .lk-chat-entry[data-lk-message-origin="remote"],
+.lk-chat .lk-chat-entry[data-lk-message-origin="remote"] + .lk-chat-entry[data-lk-message-origin="local"] {
+  margin-top: 0.625rem !important;
+}
+
+/* ── Hide ALL participant names ──────────────────────────────── */
+
+.lk-chat .lk-chat-entry .lk-participant-name {
+  display: none !important;
+}
+
+/* ── Timestamp — below bubble, outside ────────────────────────── */
+
+.lk-chat .lk-meta-data {
+  display: block !important;
+  margin-top: 2px !important;
+  margin-bottom: 0 !important;
+  padding: 0 0.25rem !important;
+}
+
+/* Local: timestamp right-aligned below bubble */
+.lk-chat .lk-chat-entry[data-lk-message-origin="local"] .lk-meta-data {
+  text-align: right !important;
+}
+
+/* Remote: timestamp left-aligned below bubble */
+.lk-chat .lk-chat-entry[data-lk-message-origin="remote"] .lk-meta-data {
+  text-align: left !important;
+}
+
+/* Hide meta on consecutive same-sender messages */
+.lk-chat .lk-chat-entry[data-lk-message-origin="local"] + .lk-chat-entry[data-lk-message-origin="local"] .lk-meta-data,
+.lk-chat .lk-chat-entry[data-lk-message-origin="remote"] + .lk-chat-entry[data-lk-message-origin="remote"] .lk-meta-data {
+  display: none !important;
+}
+
+.lk-chat .lk-timestamp {
+  font-size: 0.55rem !important;
+  opacity: 0.4 !important;
+}
+.lk-chat .lk-chat-entry[data-lk-message-origin="local"] .lk-timestamp {
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+.lk-chat .lk-chat-entry[data-lk-message-origin="remote"] .lk-timestamp {
+  color: rgba(255, 255, 255, 0.35) !important;
+}
+
+/* ── Message body — clean, no inner bubble ───────────────────── */
+
+.lk-chat .lk-message-body {
+  font-size: 0.8125rem !important;
+  line-height: 1.4 !important;
+  padding: 0.4rem 0.65rem !important;
+  border-radius: 1.125rem !important;
+  width: auto !important;
+  max-width: 100% !important;
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
+}
+.lk-chat .lk-chat-entry[data-lk-message-origin="local"] .lk-message-body {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.92), rgba(139, 92, 246, 0.88)) !important;
+  color: #fff !important;
+  border-bottom-right-radius: 4px !important;
+}
+.lk-chat .lk-chat-entry[data-lk-message-origin="remote"] .lk-message-body {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+  border-bottom-left-radius: 4px !important;
+}
+
+/* ── Input bar — iMessage pill ───────────────────────────────── */
+
+.lk-chat .lk-chat-form {
+  padding: 0.5rem 0.625rem !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.06) !important;
+  gap: 0.5rem !important;
+  display: flex !important;
+  align-items: center !important;
+  background: transparent !important;
+}
+
+.lk-chat .lk-chat-form-input {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 1.25rem !important;
+  padding: 0.5rem 0.875rem !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+  font-size: 0.8125rem !important;
+  flex: 1 !important;
+  transition: all 0.2s ease !important;
+}
+
+.lk-chat .lk-chat-form-input::placeholder {
+  color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.lk-chat .lk-chat-form-input:focus {
+  border-color: rgba(139, 92, 246, 0.4) !important;
+  outline: none !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.1) !important;
+}
+
+/* ── Send button — arrow icon, iMessage style ────────────────── */
+
+.lk-chat .lk-chat-form-button {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  background-color: #7c3aed !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 19V5'/%3E%3Cpath d='m5 12 7-7 7 7'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  background-size: 1rem 1rem !important;
+  color: transparent !important;
+  border-radius: 50% !important;
+  width: 2.125rem !important;
+  height: 2.125rem !important;
+  min-width: 2.125rem !important;
+  padding: 0 !important;
+  border: none !important;
+  flex-shrink: 0 !important;
+  transition: all 0.2s ease !important;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3) !important;
+  cursor: pointer !important;
+}
+
+.lk-chat .lk-chat-form-button:hover {
+  background: linear-gradient(135deg, #8b5cf6, #a78bfa) !important;
+  transform: scale(1.08) !important;
+  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.4) !important;
+}
+
+.lk-chat .lk-chat-form-button:active {
+  transform: scale(0.95) !important;
+}
+
+/* ── LiveKit Layout Fixes ──────────────────────────────────────── */
+
+/* Portal mechanism moves .lk-video-conference out of [data-lk-theme],
+   so CSS custom properties don't cascade. Re-declare the full theme here. */
 .lk-video-conference {
+  color-scheme: dark;
+  --lk-bg: #0f0f14;
+  --lk-bg2: #1a1a24;
+  --lk-bg3: #24243a;
+  --lk-bg4: #2e2e4a;
+  --lk-bg5: #3d3d5c;
+  --lk-fg: #f8fafc;
+  --lk-fg2: #e2e8f0;
+  --lk-fg3: #cbd5e1;
+  --lk-fg4: #94a3b8;
+  --lk-fg5: #64748b;
+  --lk-border-color: rgba(139, 92, 246, 0.12);
+  --lk-accent-fg: #fff;
+  --lk-accent-bg: #7c3aed;
+  --lk-accent2: #8b5cf6;
+  --lk-accent3: #a78bfa;
+  --lk-danger-fg: #fff;
+  --lk-danger: #ef4444;
+  --lk-success-fg: #fff;
+  --lk-success: #10b981;
+  --lk-control-fg: var(--lk-fg);
+  --lk-control-bg: rgba(15, 15, 20, 0.85);
+  --lk-control-hover-bg: rgba(36, 36, 58, 0.9);
+  --lk-control-active-bg: var(--lk-bg4);
+  --lk-control-active-hover-bg: var(--lk-bg5);
+  --lk-border-radius: 0.75rem;
+  --lk-font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --lk-font-size: 16px;
+  --lk-line-height: 1.5;
+  --lk-box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.15);
+  --lk-drop-shadow: rgba(255, 255, 255, 0.2) 0px 0px 24px;
+  --lk-grid-gap: 0.5rem;
+  --lk-control-bar-height: 69px;
+  --lk-chat-header-height: 69px;
+  background-color: var(--lk-bg);
+  color: var(--lk-fg);
+  font-family: var(--lk-font-family);
+  font-size: var(--lk-font-size);
+  line-height: var(--lk-line-height);
   max-width: 100%;
   overflow: hidden;
 }
 
-.lk-chat {
-  max-width: 300px;
-  flex-shrink: 1;
-}
-
-/* Prevent video tile from pushing control bar out of view */
 .lk-video-conference-inner {
   overflow: hidden;
 }
@@ -36,4 +376,15 @@ body {
   flex: 1 1 0px;
   min-height: 0;
   overflow: hidden;
+}
+
+/* ── Custom Animations ─────────────────────────────────────────── */
+
+@keyframes pulse-subtle {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.2); }
+  50% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
 }

@@ -57,7 +57,9 @@ export function CallSessionProvider({ children }: { children: React.ReactNode })
   // React renders into it via createPortal, consultation page moves it into its container.
   const [videoPortalHost] = useState<HTMLDivElement | null>(() => {
     if (typeof document === 'undefined') return null;
-    return document.createElement('div');
+    const el = document.createElement('div');
+    el.setAttribute('data-lk-theme', 'default');
+    return el;
   });
 
   // Hidden container keeps the portal host always in the DOM — even during navigation.
