@@ -30,6 +30,8 @@ interface CallSessionState {
   endCall: () => void;
   handleDisconnected: () => void;
   hasBeenInSession: (appointmentId: string) => boolean;
+  hasUserLeft: () => boolean;
+  resetUserLeft: () => void;
 }
 
 // ── Context ─────────────────────────────────────────────────────────
@@ -82,11 +84,22 @@ export function CallSessionProvider({ children }: { children: React.ReactNode })
   // Used to distinguish "doctor never connected" from "doctor connected then disconnected".
   const connectedIdsRef = useRef(new Set<string>());
 
+  // Track whether the doctor intentionally left (clicked LiveKit's leave button).
+  // Distinguishes intentional leave from unexpected disconnect (network drop, HMR reload).
+  const userLeftRef = useRef(false);
+
   const hasBeenInSession = useCallback((appointmentId: string) => {
     return connectedIdsRef.current.has(appointmentId);
   }, []);
 
+  const hasUserLeft = useCallback(() => userLeftRef.current, []);
+
+  const resetUserLeft = useCallback(() => { userLeftRef.current = false; }, []);
+
   const startCall = useCallback(async (params: StartCallParams) => {
+    // Reset intentional-leave flag on new connection
+    userLeftRef.current = false;
+
     // Disconnect any existing room first
     if (roomRef.current) {
       try { await roomRef.current.disconnect(); } catch {}
@@ -164,6 +177,9 @@ export function CallSessionProvider({ children }: { children: React.ReactNode })
   }, []);
 
   const handleLiveKitDisconnected = useCallback(() => {
+    // Mark as intentional leave — LiveKit's onDisconnected fires when the
+    // user clicks the built-in "Leave" button in VideoConference.
+    userLeftRef.current = true;
     handleDisconnected();
   }, [handleDisconnected]);
 
@@ -182,6 +198,8 @@ export function CallSessionProvider({ children }: { children: React.ReactNode })
     endCall,
     handleDisconnected,
     hasBeenInSession,
+    hasUserLeft,
+    resetUserLeft,
   }), [
     activeAppointmentId,
     activeAppointment,
@@ -195,6 +213,8 @@ export function CallSessionProvider({ children }: { children: React.ReactNode })
     endCall,
     handleDisconnected,
     hasBeenInSession,
+    hasUserLeft,
+    resetUserLeft,
   ]);
 
   return (
