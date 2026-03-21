@@ -41,6 +41,7 @@ import {
   Repeat,
   Flame,
   BarChart2,
+  Percent,
 } from 'lucide-react';
 import {
   format,
@@ -67,6 +68,7 @@ import { useAppointments } from '@/lib/hooks/useAppointments';
 import type { Appointment } from '@/lib/types';
 import type { LucideIcon } from 'lucide-react';
 import ActiveSessionCard from '@/components/portal/ActiveSessionCard';
+import { getSpecialistNetInCents } from '@/lib/constants';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -171,16 +173,16 @@ function filterByPreviousPeriod(paid: Appointment[], range: TimeRange): Appointm
 
 function buildMonthlyData(
   filtered: Appointment[],
-  fee: number,
+  specialistPriceInCents: number,
   range: TimeRange,
 ): { month: string; income: number; sessions: number; cumulative: number }[] {
   const now = new Date();
   const monthCount = range === 'all' ? 12 : RANGE_MONTHS[range];
-  const monthlyMap: Record<string, number> = {};
+  const monthlyMap: Record<string, { income: number; sessions: number }> = {};
 
   for (let i = monthCount - 1; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    monthlyMap[format(d, 'MMM yyyy')] = 0;
+    monthlyMap[format(d, 'MMM yyyy')] = { income: 0, sessions: 0 };
   }
 
   filtered.forEach((a) => {
@@ -188,17 +190,18 @@ function buildMonthlyData(
     if (!d) return;
     const key = format(d, 'MMM yyyy');
     if (key in monthlyMap) {
-      monthlyMap[key] += fee;
+      monthlyMap[key].income += getSpecialistNetInCents(a, specialistPriceInCents) / 100;
+      monthlyMap[key].sessions++;
     }
   });
 
   let cumulative = 0;
-  return Object.entries(monthlyMap).map(([month, income]) => {
-    cumulative += income;
+  return Object.entries(monthlyMap).map(([month, data]) => {
+    cumulative += data.income;
     return {
       month,
-      income,
-      sessions: fee > 0 && income > 0 ? Math.round(income / fee) : 0,
+      income: data.income,
+      sessions: data.sessions,
       cumulative,
     };
   });
@@ -206,67 +209,76 @@ function buildMonthlyData(
 
 function buildConsultationBreakdown(
   filtered: Appointment[],
-  fee: number,
+  specialistPriceInCents: number,
 ): { type: string; income: number; count: number; pct: number }[] {
   const video = filtered.filter((a) => a.consultationType === 'video');
   const audio = filtered.filter((a) => a.consultationType === 'audio');
   const total = filtered.length || 1;
+  const videoIncome = video.reduce((s, a) => s + getSpecialistNetInCents(a, specialistPriceInCents) / 100, 0);
+  const audioIncome = audio.reduce((s, a) => s + getSpecialistNetInCents(a, specialistPriceInCents) / 100, 0);
   return [
-    { type: 'video', income: video.length * fee, count: video.length, pct: Math.round((video.length / total) * 100) },
-    { type: 'audio', income: audio.length * fee, count: audio.length, pct: Math.round((audio.length / total) * 100) },
+    { type: 'video', income: videoIncome, count: video.length, pct: Math.round((video.length / total) * 100) },
+    { type: 'audio', income: audioIncome, count: audio.length, pct: Math.round((audio.length / total) * 100) },
   ];
 }
 
 function buildDayOfWeekData(
   filtered: Appointment[],
-  fee: number,
+  specialistPriceInCents: number,
 ): { day: string; dayIndex: number; income: number; sessions: number }[] {
-  const counts = new Array(7).fill(0) as number[];
+  const buckets: Record<number, { income: number; sessions: number }> = {};
+  for (let i = 0; i < 7; i++) buckets[i] = { income: 0, sessions: 0 };
   filtered.forEach((a) => {
     const d = safeParse(a.scheduledAt);
-    if (d) counts[getDay(d)]++;
+    if (d) {
+      const day = getDay(d);
+      buckets[day].income += getSpecialistNetInCents(a, specialistPriceInCents) / 100;
+      buckets[day].sessions++;
+    }
   });
   const reordered = [1, 2, 3, 4, 5, 6, 0];
   return reordered.map((i) => ({
     day: DAY_NAMES[i],
     dayIndex: i,
-    income: counts[i] * fee,
-    sessions: counts[i],
+    income: buckets[i].income,
+    sessions: buckets[i].sessions,
   }));
 }
 
-function buildSparkline(paid: Appointment[], fee: number): number[] {
+function buildSparkline(paid: Appointment[], specialistPriceInCents: number): number[] {
   const now = new Date();
   const result: number[] = [];
   for (let i = 5; i >= 0; i--) {
     const month = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const count = paid.filter((a) => {
+    const monthApts = paid.filter((a) => {
       const d = safeParse(a.scheduledAt);
       return d && isSameMonth(d, month);
-    }).length;
-    result.push(count * fee);
+    });
+    result.push(monthApts.reduce((s, a) => s + getSpecialistNetInCents(a, specialistPriceInCents) / 100, 0));
   }
   return result;
 }
 
-function generateInsights(filtered: Appointment[], fee: number): InsightItem[] {
+function generateInsights(filtered: Appointment[], specialistPriceInCents: number): InsightItem[] {
   const insights: InsightItem[] = [];
   if (filtered.length === 0) return insights;
 
   // Best month
-  const monthCounts: Record<string, number> = {};
+  const monthGroups: Record<string, { count: number; income: number }> = {};
   filtered.forEach((a) => {
     const d = safeParse(a.scheduledAt);
     if (!d) return;
     const key = format(d, 'MMM yyyy');
-    monthCounts[key] = (monthCounts[key] || 0) + 1;
+    if (!monthGroups[key]) monthGroups[key] = { count: 0, income: 0 };
+    monthGroups[key].count++;
+    monthGroups[key].income += getSpecialistNetInCents(a, specialistPriceInCents) / 100;
   });
-  const bestMonth = Object.entries(monthCounts).sort((a, b) => b[1] - a[1])[0];
+  const bestMonth = Object.entries(monthGroups).sort((a, b) => b[1].income - a[1].income)[0];
   if (bestMonth) {
     insights.push({
       icon: Trophy,
       title: 'Best Month',
-      description: `${bestMonth[0]} was your highest earning month with ${formatLKR(bestMonth[1] * fee)} from ${bestMonth[1]} sessions`,
+      description: `${bestMonth[0]} was your highest earning month with ${formatLKR(bestMonth[1].income)} from ${bestMonth[1].count} sessions`,
       color: 'amber',
     });
   }
@@ -293,7 +305,9 @@ function generateInsights(filtered: Appointment[], fee: number): InsightItem[] {
   const firstHalf = sortedByDate.slice(0, midpoint);
   const secondHalf = sortedByDate.slice(midpoint);
   if (firstHalf.length > 0 && secondHalf.length > 0) {
-    const growth = calcGrowthPct(secondHalf.length * fee, firstHalf.length * fee);
+    const firstIncome = firstHalf.reduce((s, a) => s + getSpecialistNetInCents(a, specialistPriceInCents) / 100, 0);
+    const secondIncome = secondHalf.reduce((s, a) => s + getSpecialistNetInCents(a, specialistPriceInCents) / 100, 0);
+    const growth = calcGrowthPct(secondIncome, firstIncome);
     if (growth !== null) {
       insights.push({
         icon: growth >= 0 ? TrendingUp : TrendingDown,
@@ -345,8 +359,8 @@ function generateInsights(filtered: Appointment[], fee: number): InsightItem[] {
 
 // ─── Period Insight Builders ─────────────────────────────────────────────────
 
-function buildDailyInsights(filtered: Appointment[], fee: number): PeriodMetric[] {
-  if (filtered.length === 0 || fee === 0) return [];
+function buildDailyInsights(filtered: Appointment[], specialistPriceInCents: number): PeriodMetric[] {
+  if (filtered.length === 0 || specialistPriceInCents === 0) return [];
   const metrics: PeriodMetric[] = [];
   const now = new Date();
 
@@ -357,11 +371,12 @@ function buildDailyInsights(filtered: Appointment[], fee: number): PeriodMetric[
 
   // 1. Today's Earnings
   const todaySessions = withDates.filter((x) => isToday(x.date));
-  const todayIncome = todaySessions.length * fee;
+  const todayIncome = todaySessions.reduce((s, x) => s + getSpecialistNetInCents(x.apt, specialistPriceInCents) / 100, 0);
   const activeDaySet = new Set<string>();
   withDates.forEach((x) => activeDaySet.add(format(x.date, 'yyyy-MM-dd')));
   const activeDays = activeDaySet.size;
-  const dailyAvg = activeDays > 0 ? (filtered.length * fee) / activeDays : 0;
+  const totalFiltered = filtered.reduce((s, a) => s + getSpecialistNetInCents(a, specialistPriceInCents) / 100, 0);
+  const dailyAvg = activeDays > 0 ? totalFiltered / activeDays : 0;
   const todayVsAvg = dailyAvg > 0 ? ((todayIncome - dailyAvg) / dailyAvg) * 100 : 0;
 
   metrics.push({
@@ -380,7 +395,7 @@ function buildDailyInsights(filtered: Appointment[], fee: number): PeriodMetric[
   withDates.forEach((x) => {
     const key = format(x.date, 'yyyy-MM-dd');
     if (!dayIncomeMap[key]) dayIncomeMap[key] = { income: 0, sessions: 0 };
-    dayIncomeMap[key].income += fee;
+    dayIncomeMap[key].income += getSpecialistNetInCents(x.apt, specialistPriceInCents) / 100;
     dayIncomeMap[key].sessions++;
   });
   const bestDay = Object.entries(dayIncomeMap).sort((a, b) => b[1].income - a[1].income)[0];
@@ -431,23 +446,24 @@ function buildDailyInsights(filtered: Appointment[], fee: number): PeriodMetric[
   });
 
   // 5. Daily Earning Velocity
-  const thisMonthSessions = withDates.filter((x) => isSameMonth(x.date, now)).length;
+  const thisMonthApts = withDates.filter((x) => isSameMonth(x.date, now));
+  const thisMonthIncome = thisMonthApts.reduce((s, x) => s + getSpecialistNetInCents(x.apt, specialistPriceInCents) / 100, 0);
   const dayOfMonth = getDate(now);
   const daysInMonth = getDaysInMonth(now);
-  const projectedMonthly = dayOfMonth > 0 ? Math.round((thisMonthSessions / dayOfMonth) * daysInMonth * fee) : 0;
+  const projectedMonthly = dayOfMonth > 0 ? Math.round((thisMonthIncome / dayOfMonth) * daysInMonth) : 0;
   metrics.push({
     icon: Target,
     label: 'Monthly Projection',
     value: formatLKR(projectedMonthly),
-    detail: `At current pace of ${(thisMonthSessions / Math.max(1, dayOfMonth)).toFixed(1)} sessions/day — ${daysInMonth - dayOfMonth} days remaining`,
+    detail: `At current pace of ${(thisMonthApts.length / Math.max(1, dayOfMonth)).toFixed(1)} sessions/day — ${daysInMonth - dayOfMonth} days remaining`,
     color: 'violet',
   });
 
   return metrics;
 }
 
-function buildWeeklyInsights(filtered: Appointment[], fee: number): PeriodMetric[] {
-  if (filtered.length === 0 || fee === 0) return [];
+function buildWeeklyInsights(filtered: Appointment[], specialistPriceInCents: number): PeriodMetric[] {
+  if (filtered.length === 0 || specialistPriceInCents === 0) return [];
   const metrics: PeriodMetric[] = [];
   const now = new Date();
 
@@ -462,7 +478,7 @@ function buildWeeklyInsights(filtered: Appointment[], fee: number): PeriodMetric
     const ws = startOfWeek(x.date, { weekStartsOn: 1 });
     const key = format(ws, 'yyyy-MM-dd');
     if (!weekMap[key]) weekMap[key] = { income: 0, sessions: 0, weekStart: ws };
-    weekMap[key].income += fee;
+    weekMap[key].income += getSpecialistNetInCents(x.apt, specialistPriceInCents) / 100;
     weekMap[key].sessions++;
   });
   const weekEntries = Object.entries(weekMap).sort((a, b) => b[0].localeCompare(a[0]));
@@ -489,7 +505,8 @@ function buildWeeklyInsights(filtered: Appointment[], fee: number): PeriodMetric
 
   // 2. Weekly Average
   const totalWeeks = Math.max(1, weekEntries.length);
-  const weeklyAvg = Math.round((filtered.length * fee) / totalWeeks);
+  const totalWeeklyIncome = filtered.reduce((s, a) => s + getSpecialistNetInCents(a, specialistPriceInCents) / 100, 0);
+  const weeklyAvg = Math.round(totalWeeklyIncome / totalWeeks);
   metrics.push({
     icon: BarChart2,
     label: 'Weekly Average',
@@ -556,8 +573,8 @@ function buildWeeklyInsights(filtered: Appointment[], fee: number): PeriodMetric
   return metrics;
 }
 
-function buildMonthlyInsights(filtered: Appointment[], fee: number): PeriodMetric[] {
-  if (filtered.length === 0 || fee === 0) return [];
+function buildMonthlyInsights(filtered: Appointment[], specialistPriceInCents: number): PeriodMetric[] {
+  if (filtered.length === 0 || specialistPriceInCents === 0) return [];
   const metrics: PeriodMetric[] = [];
   const now = new Date();
 
@@ -571,7 +588,7 @@ function buildMonthlyInsights(filtered: Appointment[], fee: number): PeriodMetri
   withDates.forEach((x) => {
     const key = format(x.date, 'yyyy-MM');
     if (!monthMap[key]) monthMap[key] = { income: 0, sessions: 0, patients: new Set() };
-    monthMap[key].income += fee;
+    monthMap[key].income += getSpecialistNetInCents(x.apt, specialistPriceInCents) / 100;
     monthMap[key].sessions++;
     monthMap[key].patients.add(x.apt.userId);
   });
@@ -671,6 +688,62 @@ function buildMonthlyInsights(filtered: Appointment[], fee: number): PeriodMetri
 }
 
 // ─── Sub-Components ──────────────────────────────────────────────────────────
+
+function CommissionBreakdownCard({
+  grossIncome,
+  platformFee,
+  netIncome,
+}: {
+  grossIncome: number;
+  platformFee: number;
+  netIncome: number;
+}) {
+  const payoutPct = grossIncome > 0 ? Math.round((netIncome / grossIncome) * 100) : 70;
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200/60 p-6 mb-6">
+      <div className="flex items-center gap-2 mb-5">
+        <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center">
+          <Percent className="w-4 h-4 text-violet-600" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-900">Earnings Breakdown</h2>
+      </div>
+
+      {/* Three-column breakdown */}
+      <div className="grid grid-cols-3 gap-6 mb-5">
+        <div>
+          <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Gross Consultations</p>
+          <p className="text-xl font-bold text-slate-900">{formatLKR(grossIncome)}</p>
+          <p className="text-xs text-slate-400 mt-0.5">Total billed to patients</p>
+        </div>
+        <div className="border-l border-slate-100 pl-6">
+          <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Platform Fee (30%)</p>
+          <p className="text-xl font-bold text-red-500">&minus; {formatLKR(platformFee)}</p>
+          <p className="text-xs text-slate-400 mt-0.5">MindAssist service fee</p>
+        </div>
+        <div className="border-l border-slate-100 pl-6">
+          <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Your Earnings</p>
+          <p className="text-xl font-bold text-emerald-600">{formatLKR(netIncome)}</p>
+          <p className="text-xs text-slate-400 mt-0.5">Net payout ({payoutPct}%)</p>
+        </div>
+      </div>
+
+      {/* Visual split bar */}
+      <div className="relative h-3 rounded-full overflow-hidden bg-slate-100">
+        <motion.div
+          className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400"
+          initial={{ width: 0 }}
+          animate={{ width: `${payoutPct}%` }}
+          transition={{ duration: 1, ease: 'easeOut', delay: 0.3 }}
+        />
+      </div>
+      <div className="flex justify-between mt-2">
+        <span className="text-xs text-emerald-600 font-medium">Your share ({payoutPct}%)</span>
+        <span className="text-xs text-slate-400 font-medium">Platform fee ({100 - payoutPct}%)</span>
+      </div>
+    </div>
+  );
+}
 
 function EnhancedStatCard({
   title, value, icon: Icon, color, growth, subtitle, sparklineData,
@@ -776,7 +849,10 @@ export default function IncomePage() {
 function IncomeContent() {
   const { specialist } = useAuth();
   const { paid, loading } = useAppointments(specialist?.id);
-  const feePerSession = (specialist?.priceInCents ?? 0) / 100;
+  const specialistPriceInCents = specialist?.priceInCents ?? 0;
+  const netFeePerSession = specialistPriceInCents > 0
+    ? getSpecialistNetInCents({ specialistPayoutInCents: undefined }, specialistPriceInCents) / 100
+    : 0;
 
   // State
   const [timeRange, setTimeRange] = useState<TimeRange>('6m');
@@ -791,30 +867,34 @@ function IncomeContent() {
   // KPI stats
   const kpiStats = useMemo(() => {
     const now = new Date();
-    const totalIncome = filtered.length * feePerSession;
+    const totalIncome = filtered.reduce((s, a) => s + getSpecialistNetInCents(a, specialistPriceInCents) / 100, 0);
     const totalSessions = filtered.length;
     const thisMonthPaid = filtered.filter((a) => { const d = safeParse(a.scheduledAt); return d && isSameMonth(d, now); });
     const lastMonth = subMonths(now, 1);
     const lastMonthPaid = filtered.filter((a) => { const d = safeParse(a.scheduledAt); return d && isSameMonth(d, lastMonth); });
-    const thisMonthIncome = thisMonthPaid.length * feePerSession;
-    const lastMonthIncome = lastMonthPaid.length * feePerSession;
+    const thisMonthIncome = thisMonthPaid.reduce((s, a) => s + getSpecialistNetInCents(a, specialistPriceInCents) / 100, 0);
+    const lastMonthIncome = lastMonthPaid.reduce((s, a) => s + getSpecialistNetInCents(a, specialistPriceInCents) / 100, 0);
     const momGrowth = calcGrowthPct(thisMonthIncome, lastMonthIncome);
     const prevFiltered = filterByPreviousPeriod(paid, timeRange);
-    const prevTotalIncome = prevFiltered.length * feePerSession;
+    const prevTotalIncome = prevFiltered.reduce((s, a) => s + getSpecialistNetInCents(a, specialistPriceInCents) / 100, 0);
     const totalGrowth = calcGrowthPct(totalIncome, prevTotalIncome);
-    const sparklineData = buildSparkline(paid, feePerSession);
-    return { totalIncome, totalGrowth, thisMonthIncome, momGrowth, totalSessions, sparklineData };
-  }, [filtered, paid, feePerSession, timeRange]);
+    const sparklineData = buildSparkline(paid, specialistPriceInCents);
+    const grossIncome = filtered.reduce(
+      (s, a) => s + (a.consultationFeeInCents ?? specialistPriceInCents) / 100, 0,
+    );
+    const platformFee = grossIncome - totalIncome;
+    return { totalIncome, totalGrowth, thisMonthIncome, momGrowth, totalSessions, sparklineData, grossIncome, platformFee };
+  }, [filtered, paid, specialistPriceInCents, timeRange]);
 
-  const monthlyData = useMemo(() => buildMonthlyData(filtered, feePerSession, timeRange), [filtered, feePerSession, timeRange]);
-  const consultationBreakdown = useMemo(() => buildConsultationBreakdown(filtered, feePerSession), [filtered, feePerSession]);
-  const dayOfWeekData = useMemo(() => buildDayOfWeekData(filtered, feePerSession), [filtered, feePerSession]);
-  const insights = useMemo(() => generateInsights(filtered, feePerSession), [filtered, feePerSession]);
+  const monthlyData = useMemo(() => buildMonthlyData(filtered, specialistPriceInCents, timeRange), [filtered, specialistPriceInCents, timeRange]);
+  const consultationBreakdown = useMemo(() => buildConsultationBreakdown(filtered, specialistPriceInCents), [filtered, specialistPriceInCents]);
+  const dayOfWeekData = useMemo(() => buildDayOfWeekData(filtered, specialistPriceInCents), [filtered, specialistPriceInCents]);
+  const insights = useMemo(() => generateInsights(filtered, specialistPriceInCents), [filtered, specialistPriceInCents]);
 
   // Period insights
-  const dailyInsights = useMemo(() => buildDailyInsights(filtered, feePerSession), [filtered, feePerSession]);
-  const weeklyInsights = useMemo(() => buildWeeklyInsights(filtered, feePerSession), [filtered, feePerSession]);
-  const monthlyInsights = useMemo(() => buildMonthlyInsights(filtered, feePerSession), [filtered, feePerSession]);
+  const dailyInsights = useMemo(() => buildDailyInsights(filtered, specialistPriceInCents), [filtered, specialistPriceInCents]);
+  const weeklyInsights = useMemo(() => buildWeeklyInsights(filtered, specialistPriceInCents), [filtered, specialistPriceInCents]);
+  const monthlyInsights = useMemo(() => buildMonthlyInsights(filtered, specialistPriceInCents), [filtered, specialistPriceInCents]);
   const activePeriodInsights = insightTab === 'daily' ? dailyInsights : insightTab === 'weekly' ? weeklyInsights : monthlyInsights;
 
   // Transactions
@@ -887,11 +967,16 @@ function IncomeContent() {
               {/* KPI Row */}
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: 'easeOut', delay: 0 }}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                  <EnhancedStatCard title="Total Earnings" value={formatLKR(kpiStats.totalIncome)} icon={DollarSign} color="emerald" growth={kpiStats.totalGrowth} subtitle={`${kpiStats.totalSessions} sessions`} sparklineData={kpiStats.sparklineData} />
+                  <EnhancedStatCard title="Total Earnings" value={formatLKR(kpiStats.totalIncome)} icon={DollarSign} color="emerald" growth={kpiStats.totalGrowth} subtitle="net after 30% platform fee" sparklineData={kpiStats.sparklineData} />
                   <EnhancedStatCard title="This Month" value={formatLKR(kpiStats.thisMonthIncome)} icon={TrendingUp} color="violet" growth={kpiStats.momGrowth} subtitle="vs last month" sparklineData={kpiStats.sparklineData} />
-                  <EnhancedStatCard title="Avg Per Session" value={formatLKR(feePerSession)} icon={Users} color="blue" subtitle="consultation fee" />
+                  <EnhancedStatCard title="Avg Per Session" value={formatLKR(netFeePerSession)} icon={Users} color="blue" subtitle="after 30% platform fee" />
                   <EnhancedStatCard title="Total Sessions" value={String(kpiStats.totalSessions)} icon={Calendar} color="amber" subtitle={`in ${RANGES.find((r) => r.key === timeRange)?.label?.toLowerCase()}`} />
                 </div>
+              </motion.div>
+
+              {/* Commission Breakdown */}
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: 'easeOut', delay: SECTION_DELAY_STEP * 0.5 }}>
+                <CommissionBreakdownCard grossIncome={kpiStats.grossIncome} platformFee={kpiStats.platformFee} netIncome={kpiStats.totalIncome} />
               </motion.div>
 
               {/* Revenue Trend Chart */}
@@ -953,7 +1038,7 @@ function IncomeContent() {
                           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                             <div className="text-center">
                               <p className="text-xs text-slate-400">Total</p>
-                              <p className="text-lg font-bold text-slate-900">{formatLKR(filtered.length * feePerSession)}</p>
+                              <p className="text-lg font-bold text-slate-900">{formatLKR(kpiStats.totalIncome)}</p>
                             </div>
                           </div>
                         </div>
@@ -1139,9 +1224,14 @@ function IncomeContent() {
                               {apt.consultationType === 'video' ? <Video className="w-3 h-3" /> : <Phone className="w-3 h-3" />}
                               {apt.consultationType}
                             </span>
-                            <span className="text-sm font-bold text-emerald-600 min-w-[100px] text-right">
-                              +{formatLKR(feePerSession)}
-                            </span>
+                            <div className="text-right min-w-[100px]">
+                              <p className="text-[11px] text-slate-400 line-through">
+                                {formatLKR((apt.consultationFeeInCents ?? specialistPriceInCents) / 100)}
+                              </p>
+                              <p className="text-sm font-bold text-emerald-600">
+                                +{formatLKR(getSpecialistNetInCents(apt, specialistPriceInCents) / 100)}
+                              </p>
+                            </div>
                           </div>
                         </div>
                       ))}
