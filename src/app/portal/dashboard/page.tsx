@@ -25,6 +25,7 @@ import { useSessionNotifications } from '@/lib/hooks/useSessionNotifications';
 import { usePatients } from '@/lib/hooks/usePatients';
 import PatientProfileModal from '@/components/portal/PatientProfileModal';
 import type { PatientProfile } from '@/lib/types';
+import { getSpecialistNetInCents } from '@/lib/constants';
 
 export default function DashboardPage() {
   return (
@@ -69,7 +70,9 @@ function DashboardContent() {
     return minBefore <= 15 && minAfter <= (duration + 15);
   });
 
-  const totalIncome = paid.length * (specialist?.priceInCents ?? 0) / 100;
+  const totalIncome = paid.reduce(
+    (sum, apt) => sum + getSpecialistNetInCents(apt, specialist?.priceInCents ?? 0), 0,
+  ) / 100;
 
   const avgRating = specialist?.reviews?.length
     ? (specialist.reviews.reduce((sum: number, r) => sum + r.rating, 0) / specialist.reviews.length).toFixed(1)

@@ -126,6 +126,11 @@ function appointmentFromDoc(data: DocumentData, id: string): Appointment {
     cancelledAt: data.cancelledAt ?? null,
     cancelledBy: data.cancelledBy ?? null,
     cancellationReason: data.cancellationReason ?? null,
+    // Platform commission
+    consultationFeeInCents: data.consultationFeeInCents ?? undefined,
+    platformCommissionRate: data.platformCommissionRate ?? undefined,
+    platformCommissionInCents: data.platformCommissionInCents ?? undefined,
+    specialistPayoutInCents: data.specialistPayoutInCents ?? undefined,
     // E2EE negotiation
     doctorE2eeCapable: data.doctorE2eeCapable ?? undefined,
     patientE2eeCapable: data.patientE2eeCapable ?? undefined,

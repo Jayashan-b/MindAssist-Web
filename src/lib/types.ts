@@ -76,6 +76,11 @@ export interface Appointment {
   doctorE2eeCapable?: boolean;
   patientE2eeCapable?: boolean;
   sessionE2ee?: boolean;
+  // Platform commission (populated at booking time)
+  consultationFeeInCents?: number | null;
+  platformCommissionRate?: number;
+  platformCommissionInCents?: number;
+  specialistPayoutInCents?: number;
   // Refund tracking on cancellation
   refundStatus?: 'pending' | 'none' | null;
 }
